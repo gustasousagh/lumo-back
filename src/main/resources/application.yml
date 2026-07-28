@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: backend
+
+  # ---------------------------------------------------------------------------
+  # BANCO DE DADOS (H2 em arquivo -> roda sem instalar nada; os dados ficam
+  # em ./data/movies.mv.db). Para trocar por Postgres, comente o bloco H2,
+  # descomente a dep no build.gradle e use algo como:
+  #   url: jdbc:postgresql://localhost:5432/movies
+  #   username: postgres
+  #   password: postgres
+  #   driver-class-name: org.postgresql.Driver
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:h2:file:./data/movies;AUTO_SERVER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  h2:
+    console:
+      enabled: true       # http://localhost:8080/h2-console  (JDBC URL acima)
+
+  # ===========================================================================
+  #  >>>  COLOQUE AQUI SEU EMAIL E SENHA DE APP  <<<
+  #  Gmail: crie uma "Senha de app" em https://myaccount.google.com/apppasswords
+  #  (precisa da verificação em 2 etapas ativada). Cole os 16 dígitos abaixo.
+  #  Dica: dá pra sobrescrever por variável de ambiente MAIL_USERNAME / MAIL_PASSWORD.
+  # ===========================================================================
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:gustavosousagsh@gmail.com}
+    password: ${MAIL_PASSWORD:${MAIL_PASSWORD}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+# Configurações da própria aplicação
+app:
+  # URL do front (usada nos links dos emails de confirmação/reset)
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  # Email remetente que aparece para o usuário
+  mail-from: ${MAIL_FROM:Movies <nao-responda@movies.local>}
+  jwt:
+    # Chave secreta do JWT (>= 32 caracteres). Em produção, use env JWT_SECRET.
+    secret: ${JWT_SECRET:troque-esta-chave-super-secreta-de-pelo-menos-32-caracteres}
+    # Validade do token em ms (aqui = 7 dias)
+    expiration-ms: 604800000
+  tokens:
+    # Validade (em minutos) dos tokens de confirmação de email e reset de senha
+    verification-expiration-minutes: 1440   # 24h
+    reset-expiration-minutes: 60            # 1h
+
+server:
+  port: 8080
