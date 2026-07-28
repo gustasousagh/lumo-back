@@ -52,8 +52,10 @@ spring:
 app:
   # URL do front (usada nos links dos emails de confirmação/reset)
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
-  # Email remetente que aparece para o usuário
-  mail-from: ${MAIL_FROM:Movies <nao-responda@movies.local>}
+  # Remetente que aparece para o usuário. IMPORTANTE: o endereço precisa ser o
+  # MESMO da conta autenticada (MAIL_USERNAME), senão o Gmail marca como spam ou
+  # reescreve o "De". Por isso usamos o próprio username como endereço.
+  mail-from: ${MAIL_FROM:Movies 🎬 <${MAIL_USERNAME:SEU_EMAIL@gmail.com}>}
   jwt:
     # Chave secreta do JWT (>= 32 caracteres). Em produção, use env JWT_SECRET.
     secret: ${JWT_SECRET:troque-esta-chave-super-secreta-de-pelo-menos-32-caracteres}
