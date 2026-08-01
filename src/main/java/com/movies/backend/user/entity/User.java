@@ -38,6 +38,36 @@ public class User {
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    // ------------------------------------------------------------------ PERFIL
+    /** Apelido único (ex.: "@joao"). Definido depois do cadastro, por isso nullable. */
+    @Column(unique = true)
+    private String username;
+
+    /** Pequena descrição que o usuário escreve sobre si. */
+    @Column(length = 500)
+    private String bio;
+
+    /** URL da foto de perfil. */
+    private String avatarUrl;
+
+    /** URL da imagem de capa do perfil. */
+    private String coverUrl;
+
+    /** Chave da paleta de cores escolhida pelo usuário. */
+    @Column(nullable = false, columnDefinition = "varchar(255) default 'sunset'")
+    private String accent = "sunset";
+
+    /** Papel do usuário no sistema (ex.: "user", "admin"). */
+    @Column(nullable = false, columnDefinition = "varchar(255) default 'user'")
+    private String role = "user";
+
+    // ------------------------------------------------------- "ASSISTINDO AGORA"
+    private String watchingTitle;
+    private String watchingPosterUrl;
+    private Long watchingMediaId;
+    private String watchingMediaType;
+    private Instant watchingUpdatedAt;
+
     public Long getId() {
         return id;
     }
@@ -84,5 +114,93 @@ public class User {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getBio() {
+        return bio;
+    }
+
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public String getCoverUrl() {
+        return coverUrl;
+    }
+
+    public void setCoverUrl(String coverUrl) {
+        this.coverUrl = coverUrl;
+    }
+
+    public String getAccent() {
+        return accent;
+    }
+
+    public void setAccent(String accent) {
+        this.accent = accent;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public String getWatchingTitle() {
+        return watchingTitle;
+    }
+
+    public void setWatchingTitle(String watchingTitle) {
+        this.watchingTitle = watchingTitle;
+    }
+
+    public String getWatchingPosterUrl() {
+        return watchingPosterUrl;
+    }
+
+    public void setWatchingPosterUrl(String watchingPosterUrl) {
+        this.watchingPosterUrl = watchingPosterUrl;
+    }
+
+    public Long getWatchingMediaId() {
+        return watchingMediaId;
+    }
+
+    public void setWatchingMediaId(Long watchingMediaId) {
+        this.watchingMediaId = watchingMediaId;
+    }
+
+    public String getWatchingMediaType() {
+        return watchingMediaType;
+    }
+
+    public void setWatchingMediaType(String watchingMediaType) {
+        this.watchingMediaType = watchingMediaType;
+    }
+
+    public Instant getWatchingUpdatedAt() {
+        return watchingUpdatedAt;
+    }
+
+    public void setWatchingUpdatedAt(Instant watchingUpdatedAt) {
+        this.watchingUpdatedAt = watchingUpdatedAt;
     }
 }
