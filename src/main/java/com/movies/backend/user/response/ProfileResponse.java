@@ -19,6 +19,7 @@ public record ProfileResponse(
         Instant createdAt,
         long friendCount,
         String friendStatus,
+        boolean online,
         WatchingNowResponse watchingNow
 ) {
 }

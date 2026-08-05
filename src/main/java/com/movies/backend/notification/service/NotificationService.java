@@ -7,6 +7,7 @@ import com.movies.backend.notification.repository.NotificationRepository;
 import com.movies.backend.notification.response.NotificationResponse;
 import com.movies.backend.user.entity.User;
 import com.movies.backend.user.repository.UserRepository;
+import com.movies.backend.user.response.UserMiniResponse;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -54,7 +55,7 @@ public class NotificationService {
                     template.convertAndSendToUser(
                             user.getEmail(),
                             "/queue/notifications",
-                            NotificationResponse.from(saved)));
+                            toResponse(saved)));
         }
         return saved;
     }
@@ -63,8 +64,19 @@ public class NotificationService {
     public List<NotificationResponse> list(User me) {
         return notificationRepository.findTop50ByUserIdOrderByCreatedAtDesc(me.getId())
                 .stream()
-                .map(NotificationResponse::from)
+                .map(this::toResponse)
                 .toList();
+    }
+
+    /** Monta a resposta embutindo o mini perfil do ator (resolvido por actorId). */
+    private NotificationResponse toResponse(Notification n) {
+        UserMiniResponse actor = null;
+        if (n.getActorId() != null) {
+            actor = userRepository.findById(n.getActorId())
+                    .map(UserMiniResponse::from)
+                    .orElse(null);
+        }
+        return NotificationResponse.from(n, actor);
     }
 
     @Transactional(readOnly = true)

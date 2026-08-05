@@ -11,6 +11,7 @@ import com.movies.backend.friend.response.FriendResponse;
 import com.movies.backend.friend.response.WatchingNowResponse;
 import com.movies.backend.notification.entity.NotificationType;
 import com.movies.backend.notification.service.NotificationService;
+import com.movies.backend.presence.service.PresenceService;
 import com.movies.backend.user.entity.User;
 import com.movies.backend.user.repository.UserRepository;
 import com.movies.backend.user.response.UserMiniResponse;
@@ -30,15 +31,18 @@ public class FriendService {
     private final FriendRequestRepository requestRepository;
     private final FriendshipRepository friendshipRepository;
     private final NotificationService notificationService;
+    private final PresenceService presenceService;
 
     public FriendService(UserRepository userRepository,
                          FriendRequestRepository requestRepository,
                          FriendshipRepository friendshipRepository,
-                         NotificationService notificationService) {
+                         NotificationService notificationService,
+                         PresenceService presenceService) {
         this.userRepository = userRepository;
         this.requestRepository = requestRepository;
         this.friendshipRepository = friendshipRepository;
         this.notificationService = notificationService;
+        this.presenceService = presenceService;
     }
 
     // ---------------------------------------------------------- STATUS/HELPERS
@@ -199,7 +203,7 @@ public class FriendService {
                     friend.getUsername(),
                     friend.getAvatarUrl(),
                     friend.getAccent(),
-                    false, // sem infra de presença ainda
+                    presenceService.isOnline(friend.getId()),
                     WatchingNowResponse.from(friend))));
         }
         return out;

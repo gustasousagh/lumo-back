@@ -29,6 +29,12 @@ spring:
     console:
       enabled: true       # http://localhost:8080/h2-console  (JDBC URL acima)
 
+  # Upload de imagens (POST /api/uploads). Limita o tamanho por arquivo/requisição.
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   # ===========================================================================
   #  >>>  COLOQUE AQUI SEU EMAIL E SENHA DE APP  <<<
   #  Gmail: crie uma "Senha de app" em https://myaccount.google.com/apppasswords

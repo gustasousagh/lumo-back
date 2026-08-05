@@ -2,13 +2,16 @@ package com.movies.backend.user.controller;
 
 import com.movies.backend.security.CurrentUser;
 import com.movies.backend.user.dto.UpdateProfileRequest;
+import com.movies.backend.user.dto.UpdateWatchingRequest;
 import com.movies.backend.user.entity.User;
+import com.movies.backend.user.response.MessageResponse;
 import com.movies.backend.user.response.ProfileResponse;
 import com.movies.backend.user.response.UserMiniResponse;
 import com.movies.backend.user.service.ProfileService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +48,22 @@ public class UserController {
     public ProfileResponse updateMe(@Valid @RequestBody UpdateProfileRequest body, Authentication auth) {
         User me = currentUser.require(auth);
         return profileService.update(me, body);
+    }
+
+    /** PATCH /api/users/me/watching -> define o "assistindo agora" do usuário. */
+    @PatchMapping("/me/watching")
+    public MessageResponse updateWatching(@Valid @RequestBody UpdateWatchingRequest body, Authentication auth) {
+        User me = currentUser.require(auth);
+        profileService.updateWatching(me, body);
+        return new MessageResponse("Assistindo agora atualizado");
+    }
+
+    /** DELETE /api/users/me/watching -> limpa o "assistindo agora" do usuário. */
+    @DeleteMapping("/me/watching")
+    public MessageResponse clearWatching(Authentication auth) {
+        User me = currentUser.require(auth);
+        profileService.clearWatching(me);
+        return new MessageResponse("Assistindo agora limpo");
     }
 
     /** GET /api/users/search?q= -> busca usuários (mínimo 2 caracteres). */
