@@ -201,6 +201,26 @@ public class RoomService {
         return roomRepository.save(room);
     }
 
+    /** Troca o episódio da sala (só o HOST). Reseta o playback pro início. */
+    @Transactional
+    public Room updateEpisode(Long roomId, String userEmail, Integer seasonNumber, Integer episodeNumber) {
+        Room room = requireRoom(roomId);
+        User user = userRepository.findByEmailIgnoreCase(userEmail)
+                .orElseThrow(() -> ApiException.unauthorized("Não autenticado"));
+        RoomParticipant participant = participantRepository.findByRoomIdAndUserId(roomId, user.getId())
+                .orElseThrow(() -> ApiException.forbidden("Você não está nessa sala"));
+        if (participant.getRole() != RoomRole.HOST) {
+            throw ApiException.forbidden("Somente o host troca o episódio");
+        }
+        room.setSeasonNumber(seasonNumber);
+        room.setEpisodeNumber(episodeNumber);
+        room.setPlaying(false);
+        room.setCurrentTimeSec(0.0);
+        room.setPlaybackUpdatedAt(Instant.now());
+        room.setUpdatedAt(Instant.now());
+        return roomRepository.save(room);
+    }
+
     /** Atualiza o lastSeenAt do participante (presença). */
     @Transactional
     public void touchPresence(Long roomId, String userEmail) {

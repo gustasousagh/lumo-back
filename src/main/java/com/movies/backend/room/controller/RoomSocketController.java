@@ -1,6 +1,7 @@
 package com.movies.backend.room.controller;
 
 import com.movies.backend.room.dto.ChatPayload;
+import com.movies.backend.room.dto.EpisodePayload;
 import com.movies.backend.room.dto.PlaybackPayload;
 import com.movies.backend.room.dto.ReactionPayload;
 import com.movies.backend.room.entity.Room;
@@ -56,6 +57,25 @@ public class RoomSocketController {
         out.put("kind", "playback");
         out.put("isPlaying", room.isPlaying());
         out.put("currentTimeSec", room.getCurrentTimeSec());
+        out.put("at", Instant.now().toString());
+        messagingTemplate.convertAndSend("/topic/room/" + id, (Object) out);
+    }
+
+    /** /app/room/{id}/episode -> só o HOST troca o episódio; reseta e retransmite. */
+    @MessageMapping("/room/{id}/episode")
+    public void episode(@DestinationVariable Long id,
+                        @Payload EpisodePayload payload,
+                        Principal principal) {
+        if (principal == null) {
+            return;
+        }
+        Room room = roomService.updateEpisode(id, principal.getName(),
+                payload.seasonNumber(), payload.episodeNumber());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("kind", "episode");
+        out.put("seasonNumber", room.getSeasonNumber());
+        out.put("episodeNumber", room.getEpisodeNumber());
         out.put("at", Instant.now().toString());
         messagingTemplate.convertAndSend("/topic/room/" + id, (Object) out);
     }
