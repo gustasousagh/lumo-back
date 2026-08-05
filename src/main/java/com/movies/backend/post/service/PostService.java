@@ -13,6 +13,8 @@ import com.movies.backend.post.repository.PostLikeRepository;
 import com.movies.backend.post.repository.PostRepository;
 import com.movies.backend.post.response.PostCommentResponse;
 import com.movies.backend.post.response.PostResponse;
+import com.movies.backend.notification.entity.NotificationType;
+import com.movies.backend.notification.service.NotificationService;
 import com.movies.backend.user.entity.User;
 import com.movies.backend.user.repository.UserRepository;
 import com.movies.backend.user.response.UserMiniResponse;
@@ -33,17 +35,20 @@ public class PostService {
     private final PostCommentRepository commentRepository;
     private final UserRepository userRepository;
     private final FriendshipRepository friendshipRepository;
+    private final NotificationService notificationService;
 
     public PostService(PostRepository postRepository,
                        PostLikeRepository likeRepository,
                        PostCommentRepository commentRepository,
                        UserRepository userRepository,
-                       FriendshipRepository friendshipRepository) {
+                       FriendshipRepository friendshipRepository,
+                       NotificationService notificationService) {
         this.postRepository = postRepository;
         this.likeRepository = likeRepository;
         this.commentRepository = commentRepository;
         this.userRepository = userRepository;
         this.friendshipRepository = friendshipRepository;
+        this.notificationService = notificationService;
     }
 
     // ------------------------------------------------------------------ CRIAR
@@ -112,6 +117,13 @@ public class PostService {
             like.setUserId(me.getId());
             likeRepository.save(like);
             liked = true;
+            // notifica o autor (se não for você mesmo)
+            if (!post.getAuthorId().equals(me.getId())) {
+                notificationService.push(post.getAuthorId(), NotificationType.GENERIC,
+                        "Curtiram sua publicação ❤️",
+                        me.getName() + " curtiu o que você postou.",
+                        "/feed", me.getId());
+            }
         }
         return Map.of("liked", liked, "likeCount", likeRepository.countByPostId(post.getId()));
     }
@@ -130,14 +142,23 @@ public class PostService {
 
     @Transactional
     public PostCommentResponse addComment(User me, Long postId, PostCommentRequest req) {
-        if (!postRepository.existsById(postId)) {
-            throw ApiException.notFound("Publicação não encontrada");
-        }
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> ApiException.notFound("Publicação não encontrada"));
         PostComment comment = new PostComment();
         comment.setPostId(postId);
         comment.setUserId(me.getId());
         comment.setText(req.text().trim());
-        return toCommentResponse(commentRepository.save(comment));
+        PostCommentResponse response = toCommentResponse(commentRepository.save(comment));
+        // notifica o autor do post (se não for você mesmo)
+        if (!post.getAuthorId().equals(me.getId())) {
+            String preview = comment.getText().length() > 60
+                    ? comment.getText().substring(0, 60) + "…" : comment.getText();
+            notificationService.push(post.getAuthorId(), NotificationType.COMMENT,
+                    "Comentaram sua publicação 💬",
+                    me.getName() + ": " + preview,
+                    "/feed", me.getId());
+        }
+        return response;
     }
 
     // ------------------------------------------------------------------ APAGAR
