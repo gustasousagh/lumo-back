@@ -15,8 +15,14 @@ import com.movies.backend.presence.service.PresenceService;
 import com.movies.backend.user.entity.User;
 import com.movies.backend.user.repository.UserRepository;
 import com.movies.backend.user.response.UserMiniResponse;
+import com.movies.backend.friend.response.SuggestionResponse;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -223,5 +229,61 @@ public class FriendService {
                 req.getStatus().name(),
                 UserMiniResponse.from(other),
                 req.getCreatedAt());
+    }
+
+    /** Sugestões de amizade: amigos de amigos (por nº de amigos em comum) + preenche com outros. */
+    @Transactional(readOnly = true)
+    public List<SuggestionResponse> suggestions(User me) {
+        Set<Long> friendIds = new HashSet<>();
+        for (Friendship f : friendshipRepository.findByUserId(me.getId())) {
+            friendIds.add(f.getFriendId());
+        }
+        Set<Long> exclude = new HashSet<>(friendIds);
+        exclude.add(me.getId());
+        for (FriendRequest r : requestRepository.findBySenderIdAndStatus(me.getId(), FriendRequestStatus.PENDING)) {
+            exclude.add(r.getReceiverId());
+        }
+        for (FriendRequest r : requestRepository.findByReceiverIdAndStatus(me.getId(), FriendRequestStatus.PENDING)) {
+            exclude.add(r.getSenderId());
+        }
+
+        // amigos de amigos, contando amigos em comum
+        Map<Long, Integer> mutual = new LinkedHashMap<>();
+        for (Long fid : friendIds) {
+            for (Friendship ff : friendshipRepository.findByUserId(fid)) {
+                Long cand = ff.getFriendId();
+                if (!exclude.contains(cand)) {
+                    mutual.merge(cand, 1, Integer::sum);
+                }
+            }
+        }
+
+        List<Long> ordered = new ArrayList<>(mutual.keySet());
+        ordered.sort(Comparator.comparingInt((Long id) -> mutual.getOrDefault(id, 0)).reversed());
+
+        // completa com outros usuários (que têm @username) se faltar gente
+        if (ordered.size() < 8) {
+            for (User u : userRepository.findAll()) {
+                Long id = u.getId();
+                if (exclude.contains(id) || mutual.containsKey(id) || u.getUsername() == null) {
+                    continue;
+                }
+                ordered.add(id);
+                if (ordered.size() >= 12) {
+                    break;
+                }
+            }
+        }
+
+        List<SuggestionResponse> out = new ArrayList<>();
+        for (Long id : ordered) {
+            if (out.size() >= 12) {
+                break;
+            }
+            userRepository.findById(id)
+                    .filter(u -> u.getUsername() != null)
+                    .ifPresent(u -> out.add(new SuggestionResponse(UserMiniResponse.from(u), mutual.getOrDefault(id, 0))));
+        }
+        return out;
     }
 }

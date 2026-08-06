@@ -79,6 +79,13 @@ public class FriendController {
         return friendService.listFriends(me);
     }
 
+    /** GET /api/friends/suggestions -> pessoas que você talvez conheça. */
+    @GetMapping("/suggestions")
+    public List<com.movies.backend.friend.response.SuggestionResponse> suggestions(Authentication auth) {
+        User me = currentUser.require(auth);
+        return friendService.suggestions(me);
+    }
+
     /** DELETE /api/friends/{userId} -> desfaz amizade. */
     @DeleteMapping("/{userId}")
     public MessageResponse unfriend(@PathVariable Long userId, Authentication auth) {
