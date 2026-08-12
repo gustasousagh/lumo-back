@@ -25,9 +25,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 
-	// Banco: H2 em arquivo (roda sem instalar nada). Para usar Postgres:
-	// runtimeOnly 'org.postgresql:postgresql'
-	runtimeOnly 'com.h2database:h2'
+	// Banco: MySQL. A conexão vem das variáveis de ambiente (veja .env.example).
+	runtimeOnly 'com.mysql:mysql-connector-j'
 
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
@@ -37,6 +36,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	// Só nos testes: banco em memória, para o build não depender de um MySQL vivo.
+	testRuntimeOnly 'com.h2database:h2'
 }
 
 tasks.named('test') {

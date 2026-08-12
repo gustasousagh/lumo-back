@@ -19,7 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * Configuração central do Spring Security:
  * - API stateless (sem sessão): quem autentica é o token JWT em cada request.
- * - Rotas /api/auth/** e o H2 console ficam públicas; o resto exige login.
+ * - Rotas /api/auth/**, /ws/** e os assets públicos ficam abertos; o resto exige login.
  * - CORS liberado para o front (localhost:3000).
  */
 @Configuration
@@ -47,13 +47,10 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .anyRequest().authenticated())
-                // permite o H2 console (que usa frames) rodar
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
