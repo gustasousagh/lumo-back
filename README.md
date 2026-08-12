@@ -4,7 +4,7 @@ Backend do **Lumo** — rede social de mídia (veja, ouça, leia junto): perfis,
 convite, mural, listas, progresso de exibição, salas de *watch party* em tempo real e
 notificações push.
 
-Front correspondente: **[lumo-web](../lumo-web)**.
+Front correspondente: **[lumo-front](https://github.com/gustasousagh/lumo-front)**.
 
 - **Stack:** Java 21 · Spring Boot 4.1 · Spring Security (JWT) · JPA/Hibernate · WebSocket STOMP · Spring Mail
 - **Banco:** MySQL 8 (schema criado pelo Hibernate)
