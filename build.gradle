@@ -28,6 +28,9 @@ dependencies {
 	// Banco: MySQL. A conexão vem das variáveis de ambiente (veja .env.example).
 	runtimeOnly 'com.mysql:mysql-connector-j'
 
+	// Cache em memória das respostas do GoCine (TTL + teto de entradas)
+	implementation 'com.github.ben-manes.caffeine:caffeine'
+
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

@@ -8,7 +8,7 @@ Front correspondente: **[lumo-front](https://github.com/gustasousagh/lumo-front)
 
 - **Stack:** Java 21 · Spring Boot 4.1 · Spring Security (JWT) · JPA/Hibernate · WebSocket STOMP · Spring Mail
 - **Banco:** MySQL 8 (schema criado pelo Hibernate)
-- **Mídia:** o catálogo vem do GoCine pelo front; aqui só guardamos snapshots em `media_catalog`
+- **Mídia:** esta API é quem fala com o **GoCine** — busca, home, detalhe e resolução de stream. Snapshots ficam em `media_catalog`.
 
 ## Rodando local
 
@@ -48,6 +48,10 @@ Testes rodam sem MySQL — o profile `test` usa H2 em memória:
 | `MAIL_USERNAME` | sim | — | Conta que envia os emails |
 | `MAIL_PASSWORD` | sim | — | Senha de app do Gmail (2FA ligado) |
 | `MAIL_FROM` | não | `Lumo 🎬 <MAIL_USERNAME>` | Remetente exibido. O endereço precisa ser o mesmo do `MAIL_USERNAME` |
+| `GOCINE_API_URL` | **sim** | — | Base da API do GoCine. Sem ela, `/api/media/*` responde 500 |
+| `GOCINE_JWT_SECRET` | **sim** | — | Token do GoCine |
+| `GOCINE_CACHE_MINUTES` | não | `5` | TTL do cache em memória das respostas do GoCine |
+| `GOCINE_CACHE_MAX_ENTRIES` | não | `500` | Teto de entradas no cache |
 | `FRONTEND_URL` | sim | `http://localhost:3000` | Origem liberada no CORS e base dos links dos emails |
 
 > Nenhum segredo fica no `application.yml` — tudo vem de env. O `.env` está no `.gitignore`.
@@ -63,13 +67,42 @@ Testes rodam sem MySQL — o profile `test` usa H2 em memória:
 | `/api/lists/**` | Listas de títulos |
 | `/api/progress/**` | Continue assistindo |
 | `/api/rooms/**` | Salas de watch party |
-| `/api/media/**` | Reações e comentários por episódio |
+| `/api/media/home` | Destaques + seções de carrossel (GoCine) |
+| `/api/media/search?q=` | Busca no catálogo |
+| `/api/media/detail?type=&id=&kind=` | Detalhe de filme/série/anime — **sem** os links de vídeo |
+| `/api/media/stream?type=&id=&kind=&season=&episode=` | Players disponíveis para assistir |
+| `/api/media/{type}/{id}/**` | Reações e comentários por episódio |
 | `/api/notifications/**` | Notificações |
 | `/api/uploads` | Upload de imagens (máx. 5 MB) |
 | `/api/health` | Health check *(público)* |
 | `/ws` | WebSocket STOMP — `/topic/room/{id}`, `/user/queue/notifications` |
 
 Tudo que não é público exige `Authorization: Bearer <jwt>`.
+
+## Usando o catálogo sem o front
+
+O catálogo é da API, então qualquer cliente (app mobile, script, Postman) consome direto:
+
+```bash
+# 1) autentica
+TOKEN=$(curl -s -X POST localhost:8080/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"voce@exemplo.com","password":"sua-senha"}' | jq -r .token)
+
+# 2) usa o catálogo
+curl -s localhost:8080/api/media/home            -H "Authorization: Bearer $TOKEN" | jq '.sections[].key'
+curl -s 'localhost:8080/api/media/search?q=matrix' -H "Authorization: Bearer $TOKEN" | jq '.results[0]'
+curl -s 'localhost:8080/api/media/detail?type=movie&id=3' -H "Authorization: Bearer $TOKEN" | jq
+curl -s 'localhost:8080/api/media/stream?type=tv&id=3556&kind=series&season=1&episode=1' \
+  -H "Authorization: Bearer $TOKEN" | jq '.streams'
+```
+
+Dois detalhes de contrato:
+
+- **`/detail` não devolve links de vídeo**, só `hasStream: true|false`. O link sai em
+  `/stream`, quando alguém realmente vai assistir.
+- **`/stream` responde 404** com `{"streams":[],"streamUrl":null,"reason":"not_found"}`
+  quando o GoCine não tem player para aquele episódio. É resposta esperada, não erro.
 
 ## Deploy (Docker)
 

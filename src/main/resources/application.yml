@@ -55,6 +55,15 @@ spring:
             enable: true
             required: true
 
+# Catálogo de mídia (GoCine). O token vive só aqui — antes ficava no servidor
+# do Next, o que impedia usar a API sem passar pelo front.
+gocine:
+  api-url: ${GOCINE_API_URL:}
+  token: ${GOCINE_JWT_SECRET:}
+  # Substitui o `revalidate: 300` que o Next fazia nas rotas de mídia.
+  cache-minutes: ${GOCINE_CACHE_MINUTES:5}
+  cache-max-entries: ${GOCINE_CACHE_MAX_ENTRIES:500}
+
 # Configurações da própria aplicação
 app:
   # URL do front (usada nos links dos emails de confirmação/reset)
