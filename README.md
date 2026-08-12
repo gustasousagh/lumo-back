@@ -71,8 +71,19 @@ Testes rodam sem MySQL — o profile `test` usa H2 em memória:
 
 Tudo que não é público exige `Authorization: Bearer <jwt>`.
 
-## Deploy
+## Deploy (Docker)
 
-Uploads gravam em disco (`data/uploads`) — em produção monte um volume persistente ou
-troque por S3/Cloudinary. `JPA_DDL_AUTO=update` é conveniente no começo; depois vale
-versionar o schema com Flyway.
+```bash
+docker build -t lumo-api .
+docker run -p 8080:8080 --env-file .env -v lumo-uploads:/app/data lumo-api
+```
+
+Build multi-stage (JDK 21 para compilar, JRE 21 para rodar), roda como usuário não-root.
+Todas as variáveis da tabela acima entram em **runtime** — nenhuma é build arg.
+
+Dois pontos de atenção:
+
+- **Monte um volume em `/app/data`.** Avatares e capas gravam em `data/uploads`; sem
+  volume, somem a cada redeploy. Melhor ainda em produção: trocar por S3/Cloudinary.
+- **`JPA_DDL_AUTO=update`** é conveniente no começo, mas deixa o Hibernate alterar o
+  schema sozinho. Quando estabilizar, troque para `validate` e versione com Flyway.
