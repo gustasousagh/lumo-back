@@ -40,7 +40,10 @@ public class Notification {
 
     private String link;
 
-    @Column(nullable = false)
+    // "read" é palavra reservada no MySQL 8: sem renomear a coluna, o CREATE TABLE
+    // quebra com erro de sintaxe. O nome do campo continua 'read', então as queries
+    // derivadas e o JSON da API não mudam.
+    @Column(name = "is_read", nullable = false)
     private boolean read = false;
 
     private Long actorId;
