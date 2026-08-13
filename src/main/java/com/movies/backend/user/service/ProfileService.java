@@ -106,6 +106,7 @@ public class ProfileService {
                 target.getAvatarUrl(),
                 target.getCoverUrl(),
                 target.getAccent(),
+                target.role().dbValue(),
                 target.getCreatedAt(),
                 friendService.friendCount(target),
                 friendStatus,

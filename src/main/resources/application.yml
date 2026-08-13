@@ -30,11 +30,14 @@ spring:
       hibernate:
         format_sql: true
 
-  # Upload de imagens (POST /api/uploads). Limita o tamanho por arquivo/requisição.
+  # Upload. O teto aqui é do container (Tomcat) e precisa ser MAIOR que o limite
+  # de negócio em app.library.max-*-mb — quem recusa por tamanho é o service, com
+  # mensagem em português; se o Tomcat cortar antes, o usuário recebe um 500 seco.
+  # max-request-size é alto porque o painel sobe uma pasta inteira de MP3 de uma vez.
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 6MB
+      max-file-size: ${UPLOAD_MAX_FILE_SIZE:256MB}
+      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:2GB}
 
   # ===========================================================================
   #  Envio de email (confirmação de conta / reset de senha).
@@ -68,6 +71,17 @@ gocine:
 app:
   # URL do front (usada nos links dos emails de confirmação/reset)
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  # Emails promovidos a ADMIN no boot. Separe por vírgula.
+  # Sem isso não existe o primeiro admin: o cadastro sempre cria usuário comum.
+  admin-emails: ${ADMIN_EMAILS:}
+  # Biblioteca de música e livros
+  library:
+    # Onde os arquivos ficam. Em produção, aponte para um volume persistente —
+    # o diretório padrão vive dentro do container e some no próximo deploy.
+    dir: ${LIBRARY_DIR:./data/library}
+    # Limites por arquivo, em MB (o service recusa acima disso).
+    max-audio-mb: ${LIBRARY_MAX_AUDIO_MB:80}
+    max-book-mb: ${LIBRARY_MAX_BOOK_MB:200}
   # Remetente que aparece para o usuário. IMPORTANTE: o endereço precisa ser o
   # MESMO da conta autenticada (MAIL_USERNAME), senão o Gmail marca como spam ou
   # reescreve o "De". Por isso usamos o próprio username como endereço.

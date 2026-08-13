@@ -16,6 +16,8 @@ public record ProfileResponse(
         String avatarUrl,
         String coverUrl,
         String accent,
+        /** "user" ou "admin" — o front usa para mostrar (ou não) o link do painel. */
+        String role,
         Instant createdAt,
         long friendCount,
         String friendStatus,

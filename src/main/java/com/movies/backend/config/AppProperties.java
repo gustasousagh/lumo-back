@@ -1,5 +1,7 @@
 package com.movies.backend.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -11,8 +13,22 @@ public class AppProperties {
 
     private String frontendUrl = "http://localhost:3000";
     private String mailFrom = "Movies <nao-responda@movies.local>";
+    /**
+     * Emails promovidos a ADMIN toda vez que a aplicação sobe. É o jeito de
+     * existir um primeiro admin sem ter que mexer no banco na mão — e de
+     * recuperar o acesso se alguém se rebaixar por engano no painel.
+     */
+    private List<String> adminEmails = new ArrayList<>();
     private Jwt jwt = new Jwt();
     private Tokens tokens = new Tokens();
+
+    public List<String> getAdminEmails() {
+        return adminEmails;
+    }
+
+    public void setAdminEmails(List<String> adminEmails) {
+        this.adminEmails = adminEmails;
+    }
 
     public String getFrontendUrl() {
         return frontendUrl;

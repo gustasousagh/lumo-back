@@ -31,6 +31,13 @@ dependencies {
 	// Cache em memória das respostas do GoCine (TTL + teto de entradas)
 	implementation 'com.github.ben-manes.caffeine:caffeine'
 
+	// Biblioteca (música/livros): ler os metadados do próprio arquivo enviado.
+	// mp3agic  -> tags ID3v1/ID3v2 do MP3, duração e a capa embutida.
+	// pdfbox   -> metadados do PDF, contagem de páginas e render da 1ª página
+	//             como capa (livro sem capa fica com um retângulo cinza, feio).
+	implementation 'com.mpatric:mp3agic:0.9.1'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.8'
+
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

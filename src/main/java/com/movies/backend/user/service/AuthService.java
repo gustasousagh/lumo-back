@@ -102,6 +102,9 @@ public class AuthService {
         if (!user.isEnabled()) {
             throw ApiException.forbidden("Confirme seu email antes de entrar. Verifique sua caixa de entrada.");
         }
+        if (user.isSuspended()) {
+            throw ApiException.forbidden("Esta conta está suspensa. Fale com a administração.");
+        }
 
         String jwt = jwtService.generateToken(user.getEmail());
         return new AuthResponse(jwt, UserResponse.from(user));

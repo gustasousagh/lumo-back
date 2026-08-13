@@ -57,9 +57,16 @@ public class User {
     @Column(nullable = false, columnDefinition = "varchar(255) default 'sunset'")
     private String accent = "sunset";
 
-    /** Papel do usuário no sistema (ex.: "user", "admin"). */
+    /** Papel do usuário no sistema. Guardado como texto minúsculo ("user"/"admin"). */
     @Column(nullable = false, columnDefinition = "varchar(255) default 'user'")
-    private String role = "user";
+    private String role = Role.USER.dbValue();
+
+    /**
+     * Conta suspensa pelo admin. Diferente de {@code enabled}, que é sobre
+     * confirmar o email: aqui o email está confirmado, mas o acesso foi cortado.
+     */
+    @Column(nullable = false)
+    private boolean suspended = false;
 
     // ------------------------------------------------------- "ASSISTINDO AGORA"
     private String watchingTitle;
@@ -162,6 +169,27 @@ public class User {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    /** Papel tipado (o banco guarda texto; aqui a leitura já vem validada). */
+    public Role role() {
+        return Role.from(role);
+    }
+
+    public void setRole(Role role) {
+        this.role = role.dbValue();
+    }
+
+    public boolean isAdmin() {
+        return role() == Role.ADMIN;
+    }
+
+    public boolean isSuspended() {
+        return suspended;
+    }
+
+    public void setSuspended(boolean suspended) {
+        this.suspended = suspended;
     }
 
     public String getWatchingTitle() {
