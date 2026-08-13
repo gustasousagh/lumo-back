@@ -28,9 +28,21 @@ RUN addgroup -g 1001 -S spring && adduser -u 1001 -S spring -G spring
 
 COPY --from=build --chown=spring:spring /app/app.jar app.jar
 
-# Uploads de avatar/capa gravam em ./data/uploads. Monte um volume aqui,
-# senão as imagens somem a cada redeploy.
-RUN mkdir -p /app/data/uploads && chown -R spring:spring /app/data
+# Tudo que o usuário envia mora em /app/data: avatares em uploads/, e o acervo
+# de música e livros em library/. MONTE UM VOLUME AQUI — sem isso o acervo
+# inteiro some no próximo redeploy.
+#
+# As subpastas são criadas já na imagem, com a dona certa, e não só em runtime.
+# O motivo: quando o Docker cria um volume NOMEADO vazio, ele copia o conteúdo
+# que existe nesse caminho na imagem, ownership incluído. Assim o volume nasce
+# gravável pelo usuário 'spring' (uid 1001). Se essas pastas só nascessem em
+# runtime, o primeiro upload num volume novo dependeria da permissão do ponto de
+# montagem — que num bind mount pertence ao root, e o upload falharia.
+RUN mkdir -p /app/data/uploads \
+             /app/data/library/music \
+             /app/data/library/books \
+             /app/data/library/covers \
+    && chown -R spring:spring /app/data
 VOLUME ["/app/data"]
 
 USER spring
