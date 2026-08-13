@@ -78,20 +78,32 @@ public class LibraryStorageCheck implements ApplicationRunner {
             }
 
             // Banco com registros + diretório zerado = os arquivos se foram.
+            //
+            // Atenção ao texto: esta mensagem também aparece, uma única vez, no
+            // primeiro arranque DEPOIS de alguém montar o volume correto — o
+            // volume novo nasce sem marcador e os registros da perda anterior
+            // continuam no banco. Dizer só "nenhum volume montado" nesse momento
+            // manda a pessoa desfazer justamente a correção que acabou de fazer.
             log.error("""
 
                     ===========================================================================
-                     ACERVO PERDIDO — o armazenamento da biblioteca NÃO é persistente.
+                     ACERVO PERDIDO — os arquivos da biblioteca não estão mais aqui.
 
                      O banco tem {} registro(s) de música/livro, mas {} está vazio.
-                     Os arquivos foram embora no último deploy; os registros ficaram, então o
-                     catálogo vai listar faixas que não tocam e livros que não abrem.
+                     Os registros ficaram (o banco é outro serviço), então o catálogo vai
+                     listar faixas que não tocam e livros que não abrem. Apague esses
+                     registros pelo painel e envie os arquivos de novo.
 
-                     Causa quase certa: nenhum volume montado nesse caminho. Em Docker Swarm,
-                     um volume anônimo é recriado a cada task — ou seja, a cada deploy.
+                     E AGORA, O QUE ISSO SIGNIFICA:
 
-                     Como resolver: monte um volume NOMEADO em /app/data no painel de deploy
-                     e faça o deploy de novo. Depois disso, esta mensagem não volta.
+                     - Se você ACABOU de montar um volume nomeado, esta mensagem é esperada
+                       UMA vez: o volume nasceu vazio e está só constatando a perda antiga.
+                       Faça outro deploy. Se vier "armazenamento persistente confirmado",
+                       está tudo certo e esta mensagem não volta mais.
+
+                     - Se ela aparecer DE NOVO no próximo deploy, aí sim não há volume real
+                       nesse caminho. Em Docker Swarm um volume anônimo é recriado a cada
+                       task, ou seja, a cada deploy. Monte um volume NOMEADO em /app/data.
                     ===========================================================================
                     """, files, root);
 
