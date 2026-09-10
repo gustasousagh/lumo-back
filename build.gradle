@@ -25,8 +25,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 
-	// Banco: MySQL. A conexão vem das variáveis de ambiente (veja .env.example).
-	runtimeOnly 'com.mysql:mysql-connector-j'
+	// Banco: MariaDB. A conexão vem das variáveis de ambiente (veja .env.example).
+	// Driver da MariaDB e não o Connector/J da MySQL: o Connector/J descobre o
+	// dialeto com "SELECT WORD FROM INFORMATION_SCHEMA.KEYWORDS WHERE RESERVED=1",
+	// e a coluna RESERVED não existe no MariaDB — a aplicação nem sobe.
+	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 
 	// Cache em memória das respostas do GoCine (TTL + teto de entradas)
 	implementation 'com.github.ben-manes.caffeine:caffeine'

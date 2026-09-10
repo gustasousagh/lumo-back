@@ -3,7 +3,7 @@ spring:
     name: backend
 
   # ---------------------------------------------------------------------------
-  # BANCO DE DADOS (MySQL). Nada de credencial fixa aqui: tudo vem de variáveis
+  # BANCO DE DADOS (MariaDB). Nada de credencial fixa aqui: tudo vem de variáveis
   # de ambiente. Veja .env.example para a lista completa.
   #   DB_HOST / DB_PORT / DB_NAME / DB_USERNAME / DB_PASSWORD
   # Se preferir, DB_URL sobrescreve a URL inteira de uma vez.
@@ -13,10 +13,10 @@ spring:
   # Só age quando o database não existe; se já existe, nem precisa de privilégio.
   # ---------------------------------------------------------------------------
   datasource:
-    url: ${DB_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:lumo}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8}
+    url: ${DB_URL:jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:lumo}?createDatabaseIfNotExist=true&sslMode=disable&characterEncoding=UTF-8}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: org.mariadb.jdbc.Driver
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
 
