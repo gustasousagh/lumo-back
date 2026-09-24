@@ -9,10 +9,10 @@ import com.movies.backend.media.gocine.dto.GocineTypes.MediaItem;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
 import com.movies.backend.media.gocine.exception.GocineNotFoundException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriUtils;
 
 /**
  * Catálogo do GoCine: home, busca, detalhe e resolução de stream.
@@ -38,7 +38,13 @@ public class GocineService {
     public List<MediaItem> search(String query, int limit) {
         String q = query == null ? "" : query.trim();
         if (q.length() < 2) return List.of();
-        String path = "/search/" + URLEncoder.encode(q, StandardCharsets.UTF_8) + "/EASYPLEX";
+        // encodePathSegment e não URLEncoder: o termo vai num SEGMENTO DE PATH.
+        // URLEncoder é para application/x-www-form-urlencoded, onde espaço vira
+        // '+'; num path '+' é um caractere literal, então "saga of ta" chegava
+        // no GoCine como "saga+of+ta" e não casava com nada. Busca de uma
+        // palavra funcionava, de duas em diante sempre voltava vazia.
+        String path =
+                "/search/" + UriUtils.encodePathSegment(q, StandardCharsets.UTF_8) + "/EASYPLEX";
         return mapper.toSearchResults(client.get(path), limit);
     }
 

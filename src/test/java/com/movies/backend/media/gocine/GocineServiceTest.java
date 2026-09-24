@@ -36,6 +36,9 @@ class GocineServiceTest {
             Map.of(
                     "/media/mobile/default", "raw-home.json",
                     "/search/matrix/EASYPLEX", "raw-search.json",
+                    // O path chega decodificado aqui: %20 vira espaço, mas '+'
+                    // continua sendo '+'. É o que separa a codificação certa da errada.
+                    "/search/saga of ta/EASYPLEX", "raw-search.json",
                     "/media/detail/3/default", "raw-movie.json",
                     "/series/show/3556/default", "raw-series.json");
 
@@ -124,6 +127,17 @@ class GocineServiceTest {
         var results = service.search("matrix", 30);
         assertThat(results).isNotEmpty();
         assertThat(results).allSatisfy(r -> assertThat(r.title()).isNotBlank());
+    }
+
+    @Test
+    @DisplayName("busca com espaço vai como %20 no path, não como '+'")
+    void searchWithSpacesEncodesPathSegment() {
+        // URLEncoder serve para form-urlencoded, onde espaço é '+'. Num segmento
+        // de path '+' é um caractere literal, então a origem recebia
+        // "saga+of+ta" e não achava nada — busca de uma palavra funcionava,
+        // de duas não.
+        var results = service.search("saga of ta", 30);
+        assertThat(results).isNotEmpty();
     }
 
     @Test
