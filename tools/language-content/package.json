@@ -1,0 +1,16 @@
+{
+  "name": "language-content",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gera o conteúdo do curso de inglês a partir de fontes abertas. Sem dependências e sem serviço pago.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "generate": "node src/index.js",
+    "validate": "node src/validate.js",
+    "export": "node src/validate.js && node src/export-web.js",
+    "all": "npm run generate && npm run export"
+  }
+}
