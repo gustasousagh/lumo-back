@@ -28,7 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /** Prefixos onde o ?token= é aceito. Fora daqui, só header. */
     private static final String[] QUERY_TOKEN_PATHS = {
-            "/api/library/", "/api/playlists/", "/api/admin/export"
+            "/api/library/", "/api/playlists/", "/api/admin/export", "/api/media/download"
     };
 
     private final JwtService jwtService;

@@ -72,6 +72,14 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
+        /*
+         * Sem isto o JavaScript não enxerga estes cabeçalhos numa resposta de
+         * outra origem — e o download precisa deles: Content-Length para a
+         * barra de progresso, Content-Range para retomar de onde parou e
+         * Content-Disposition para o nome do arquivo.
+         */
+        config.setExposedHeaders(java.util.List.of(
+                "Content-Disposition", "Content-Range", "Content-Length", "Accept-Ranges"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
