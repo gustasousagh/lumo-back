@@ -94,6 +94,9 @@ public class MediaDownloadService {
     public ResponseEntity<InputStreamResource> proxy(String sourceUrl, String range, String filename) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(sourceUrl))
                 .header("User-Agent", USER_AGENT)
+                // O CDN valida o Referer na cadeia de redirect (source -> CDN real);
+                // sem ele o arquivo pode ser recusado.
+                .header("Referer", "https://web.gocine.app/")
                 .GET();
         if (range != null && !range.isBlank()) {
             request.header(HttpHeaders.RANGE, range);

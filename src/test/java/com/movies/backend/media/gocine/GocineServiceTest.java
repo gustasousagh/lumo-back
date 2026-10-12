@@ -2,12 +2,14 @@ package com.movies.backend.media.gocine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.movies.backend.media.gocine.client.GocineClient;
+import com.movies.backend.media.gocine.client.GocineWebClient;
 import com.movies.backend.media.gocine.config.GocineProperties;
 import com.movies.backend.media.gocine.dto.GocineTypes.ContentKind;
+import com.movies.backend.media.gocine.dto.GocineTypes.HomeFeed;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaDetail;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
+import com.movies.backend.media.gocine.dto.GocineTypes.Season;
 import com.movies.backend.media.gocine.service.GocineMapper;
 import com.movies.backend.media.gocine.service.GocineService;
 import com.sun.net.httpserver.HttpExchange;
@@ -19,36 +21,43 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Cobre o caminho completo — HTTP, parsing e orquestração — contra um stub do
- * GoCine servido pelo próprio teste. Sem rede: roda em qualquer CI.
+ * Caminho completo — login, HTTP, recorte do RSC e orquestração — contra um
+ * stub do web.gocine.app servido pelo próprio teste, com páginas reais
+ * gravadas em src/test/resources/gocine/web. Sem rede.
  */
 class GocineServiceTest {
 
+    /** Rota (path + query) -> fixture. */
     private static final Map<String, String> ROUTES =
-            Map.of(
-                    "/media/mobile/default", "raw-home.json",
-                    "/search/matrix/EASYPLEX", "raw-search.json",
-                    // O path chega decodificado aqui: %20 vira espaço, mas '+'
-                    // continua sendo '+'. É o que separa a codificação certa da errada.
-                    "/search/saga of ta/EASYPLEX", "raw-search.json",
-                    "/media/detail/3/default", "raw-movie.json",
-                    "/series/show/3556/default", "raw-series.json");
+            Map.ofEntries(
+                    Map.entry("/", "home.html"),
+                    Map.entry("/movie/33697", "movie-33697.html"),
+                    Map.entry("/series/14173", "series-14173.html"),
+                    Map.entry("/anime/683", "anime-683.html"),
+                    Map.entry("/watch/anime/683?season=2&episode=53", "watch-anime-683-s2e53.html"),
+                    Map.entry("/watch/series/14173?season=1&episode=1", "watch-series-14173-s1e1.html"),
+                    Map.entry("/api/bff/series/season/33138", "bff-series-season.json"),
+                    Map.entry("/api/bff/animes/season/2017", "bff-animes-season-2017.json"),
+                    Map.entry("/api/bff/animes/season/2018", "bff-animes-season-2018.json"),
+                    Map.entry("/api/bff/animes/season/2019", "bff-animes-season-2019.json"),
+                    Map.entry("/api/bff/animes/season/2020", "bff-animes-season-2020.json"));
 
     private HttpServer server;
     private GocineService service;
-    private final AtomicInteger requestCount = new AtomicInteger();
-    private final AtomicInteger authorizedCount = new AtomicInteger();
+    private final ObjectMapper om = JsonMapper.builder().build();
+    private final List<String> requests = new CopyOnWriteArrayList<>();
 
     private byte[] fixture(String name) throws IOException {
-        try (InputStream in = getClass().getResourceAsStream("/gocine/" + name)) {
+        try (InputStream in = getClass().getResourceAsStream("/gocine/web/" + name)) {
             return in.readAllBytes();
         }
     }
@@ -57,33 +66,31 @@ class GocineServiceTest {
     void startStub() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", this::handle);
+        server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
         server.start();
 
         GocineProperties props = new GocineProperties();
-        props.setApiUrl("http://127.0.0.1:" + server.getAddress().getPort());
-        props.setToken("token-de-teste");
-        GocineClient client = new GocineClient(props, JsonMapper.builder().build());
-        service = new GocineService(client, new GocineMapper());
+        props.setWebUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        props.setEmail("teste@example.com");
+        props.setPassword("senha");
+        props.setProfileId(1);
+        service = new GocineService(new GocineWebClient(props, om), new GocineMapper(), om);
     }
 
     private void handle(HttpExchange exchange) throws IOException {
-        requestCount.incrementAndGet();
-        if ("Bearer token-de-teste".equals(exchange.getRequestHeaders().getFirst("Authorization"))) {
-            authorizedCount.incrementAndGet();
-        }
-        String path = exchange.getRequestURI().getPath();
-        String name = ROUTES.get(path);
+        String uri = exchange.getRequestURI().toString();
+        requests.add(exchange.getRequestMethod() + " " + uri);
         byte[] body;
-        int status;
-        if (name == null) {
-            // qualquer coisa fora do mapa é 404 — é o que dispara o fallback
+        int status = 200;
+        if (uri.equals("/api/auth/login") || uri.equals("/api/profile/select")) {
+            exchange.getResponseHeaders().add("Set-Cookie", "gc_sess=abc; Path=/");
+            body = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+        } else if (ROUTES.containsKey(uri)) {
+            body = fixture(ROUTES.get(uri));
+        } else {
             status = 404;
             body = "{\"message\":\"not found\"}".getBytes(StandardCharsets.UTF_8);
-        } else {
-            status = 200;
-            body = fixture(name);
         }
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
@@ -96,21 +103,81 @@ class GocineServiceTest {
     }
 
     @Test
-    @DisplayName("home vem parseada de ponta a ponta, com o token no header")
-    void homeEndToEnd() {
-        var feed = service.getHome();
-        assertThat(feed.sections()).isNotEmpty();
-        assertThat(feed.featured()).isNotEmpty();
-        assertThat(authorizedCount.get()).as("o token foi enviado").isEqualTo(1);
+    @DisplayName("home ao vivo: linhas de filme, série e anime + destaques, e serializa")
+    void home() {
+        HomeFeed feed = service.getHome();
+        assertThat(feed.sections()).hasSizeGreaterThanOrEqualTo(10);
+        assertThat(feed.sections()).anySatisfy(s -> assertThat(s.title()).isEqualTo("Top 10 animes"));
+        assertThat(feed.sections().stream().flatMap(s -> s.items().stream()))
+                .anySatisfy(i -> assertThat(i.contentKind()).isEqualTo(ContentKind.ANIME))
+                .anySatisfy(i -> assertThat(i.contentKind()).isEqualTo(ContentKind.SERIES))
+                .anySatisfy(i -> assertThat(i.mediaType()).isEqualTo(MediaType.MOVIE));
+        // os destaques são o carrossel do topo, não a primeira linha
+        assertThat(feed.featured()).hasSize(5);
+        assertThat(feed.featured().get(0).backdropUrl()).contains("w1280");
+        assertThat(om.writeValueAsString(feed)).contains("\"contentKind\":\"anime\"");
     }
 
     @Test
-    @DisplayName("a segunda chamada sai do cache, sem bater na origem")
-    void cachesResponses() {
+    @DisplayName("anime abre em /anime, com todas as temporadas e numeração absoluta")
+    void animeDetail() {
+        MediaDetail d = service.getSeriesDetail(683, ContentKind.ANIME);
+        assertThat(d.title()).isEqualTo("Naruto");
+        assertThat(d.contentKind()).isEqualTo(ContentKind.ANIME);
+        assertThat(d.overview()).contains("Kyuubi");
+        assertThat(d.voteAverage()).isEqualTo(8.4);
+        assertThat(d.genres()).contains("Animação");
+        assertThat(d.seasons()).extracting(Season::seasonNumber).containsExactly(1, 2, 3, 4);
+        assertThat(d.seasons()).allSatisfy(s -> assertThat(s.episodes()).isNotEmpty());
+        assertThat(d.seasons().get(1).episodes().get(0).episodeNumber()).isEqualTo(53);
+        assertThat(requests).noneMatch(r -> r.contains("/series/683"));
+    }
+
+    @Test
+    @DisplayName("série traz os episódios da temporada")
+    void seriesDetail() {
+        MediaDetail d = service.getSeriesDetail(14173, ContentKind.SERIES);
+        assertThat(d.title()).isEqualTo("A Ilha do Tesouro");
+        assertThat(d.overview()).contains("Jim Hawkins");
+        assertThat(d.seasons()).hasSize(1);
+        assertThat(d.seasons().get(0).episodes()).hasSize(1);
+        assertThat(d.seasons().get(0).episodeCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("filme: sinopse, gêneros, duração e backdrop")
+    void movieDetail() {
+        MediaDetail d = service.getMovieDetail(33697);
+        assertThat(d.title()).isEqualTo("Sobrevivência");
+        assertThat(d.overview()).startsWith("Quando o filho");
+        assertThat(d.genres()).containsExactly("Drama", "Thriller");
+        assertThat(d.runtimeMinutes()).isEqualTo(106);
+        assertThat(d.backdropUrl()).contains("w1280");
+        assertThat(d.cast()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("stream de anime vai para /watch/anime com o número do episódio do GoCine")
+    void animeStream() {
+        List<MediaVideo> v = service.resolveStreams(683, MediaType.TV, ContentKind.ANIME, 2, 53);
+        assertThat(v).hasSize(1);
+        assertThat(v.get(0).link()).contains(".mp4?token=");
+        assertThat(v.get(0).server()).isEqualTo("Dublado");
+    }
+
+    @Test
+    @DisplayName("stream de série vai para /watch/series")
+    void seriesStream() {
+        List<MediaVideo> v = service.resolveStreams(14173, MediaType.TV, ContentKind.SERIES, 1, 1);
+        assertThat(v).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("loga uma vez só e reaproveita a sessão")
+    void logsInOnce() {
         service.getHome();
-        int afterFirst = requestCount.get();
-        service.getHome();
-        assertThat(requestCount.get()).as("nenhuma requisição nova").isEqualTo(afterFirst);
+        service.getMovieDetail(33697);
+        assertThat(requests).filteredOn(r -> r.endsWith("/api/auth/login")).hasSize(1);
     }
 
     @Test
@@ -118,67 +185,6 @@ class GocineServiceTest {
     void shortQueryShortCircuits() {
         assertThat(service.search("a", 30)).isEmpty();
         assertThat(service.search("  ", 30)).isEmpty();
-        assertThat(requestCount.get()).isZero();
-    }
-
-    @Test
-    @DisplayName("busca devolve resultados normalizados")
-    void searchEndToEnd() {
-        var results = service.search("matrix", 30);
-        assertThat(results).isNotEmpty();
-        assertThat(results).allSatisfy(r -> assertThat(r.title()).isNotBlank());
-    }
-
-    @Test
-    @DisplayName("busca com espaço vai como %20 no path, não como '+'")
-    void searchWithSpacesEncodesPathSegment() {
-        // URLEncoder serve para form-urlencoded, onde espaço é '+'. Num segmento
-        // de path '+' é um caractere literal, então a origem recebia
-        // "saga+of+ta" e não achava nada — busca de uma palavra funcionava,
-        // de duas não.
-        var results = service.search("saga of ta", 30);
-        assertThat(results).isNotEmpty();
-    }
-
-    @Test
-    @DisplayName("detalhe de filme inexistente devolve null em vez de estourar")
-    void unknownMovieReturnsNull() {
-        assertThat(service.getMovieDetail(999999L)).isNull();
-    }
-
-    @Test
-    @DisplayName("série: tenta /series e cai em /animes quando dá 404")
-    void seriesFallsBackToAnime() {
-        // 3556 existe como série; pedindo com preferência 'anime', o primeiro
-        // request dá 404 e o service precisa tentar o endpoint de séries
-        MediaDetail detail = service.getSeriesDetail(3556L, ContentKind.ANIME);
-        assertThat(detail).isNotNull();
-        assertThat(detail.mediaType()).isEqualTo(MediaType.TV);
-        assertThat(detail.contentKind()).isEqualTo(ContentKind.SERIES);
-        assertThat(detail.seasons()).isNotEmpty();
-        assertThat(requestCount.get()).as("tentou anime e depois série").isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("série inexistente nos dois endpoints devolve null")
-    void unknownSeriesReturnsNull() {
-        assertThat(service.getSeriesDetail(999999L, ContentKind.SERIES)).isNull();
-        assertThat(requestCount.get()).isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("stream de episódio resolve pelos números de temporada e episódio")
-    void resolvesEpisodeStream() {
-        List<MediaVideo> videos =
-                service.resolveStreams(3556L, MediaType.TV, ContentKind.SERIES, 1, 1);
-        assertThat(videos).isNotEmpty();
-        assertThat(videos).allSatisfy(v -> assertThat(v.link()).startsWith("http"));
-    }
-
-    @Test
-    @DisplayName("stream de filme usa os vídeos do detalhe")
-    void resolvesMovieStream() {
-        List<MediaVideo> videos = service.resolveStreams(3L, MediaType.MOVIE, null, null, null);
-        assertThat(videos).isNotEmpty();
+        assertThat(requests).isEmpty();
     }
 }

@@ -13,7 +13,7 @@ spring:
   # Só age quando o database não existe; se já existe, nem precisa de privilégio.
   # ---------------------------------------------------------------------------
   datasource:
-    url: ${DB_URL:jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:lumo}?createDatabaseIfNotExist=true&sslMode=disable&characterEncoding=UTF-8}
+    url: ${DB_URL:jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:lumo}?createDatabaseIfNotExist=true&sslMode=disable&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: org.mariadb.jdbc.Driver
@@ -61,9 +61,13 @@ spring:
 # Catálogo de mídia (GoCine). O token vive só aqui — antes ficava no servidor
 # do Next, o que impedia usar a API sem passar pelo front.
 gocine:
-  api-url: ${GOCINE_API_URL:}
-  token: ${GOCINE_JWT_SECRET:}
-  # Substitui o `revalidate: 300` que o Next fazia nas rotas de mídia.
+  # Site novo do GoCine (web.gocine.app). O antigo siteapi, com token fixo, saiu
+  # do ar; agora logamos com e-mail/senha da conta e lemos o catálogo da sessão.
+  web-url: ${GOCINE_WEB_URL:https://web.gocine.app}
+  email: ${GOCINE_EMAIL:}
+  password: ${GOCINE_PASSWORD:}
+  # Zero = seleciona o primeiro perfil da conta automaticamente.
+  profile-id: ${GOCINE_PROFILE_ID:0}
   cache-minutes: ${GOCINE_CACHE_MINUTES:5}
   cache-max-entries: ${GOCINE_CACHE_MAX_ENTRIES:500}
 

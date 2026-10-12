@@ -500,4 +500,313 @@ public class GocineMapper {
 
         return episode != null ? toVideos(episode) : List.of();
     }
+
+    /* =======================================================================
+     *  GoCine novo (web.gocine.app) — os dados vêm do RSC do Next, com nomes de
+     *  campo em camelCase (posterUrl, releaseDate...) em vez do snake_case antigo.
+     * ===================================================================== */
+
+    /** Item de catálogo no formato do site novo (home, carrosséis). */
+    MediaItem toMediaItemWeb(JsonNode n) {
+        JsonNode r = asObject(n);
+        if (r == null) return null;
+        TypeInfo t = normalizeType(str(r.get("type")));
+        if (t == null) return null;
+        Double id = posNum(r.get("id"));
+        if (id == null) return null;
+
+        Double rating = num(r.get("rating"));
+        String release = str(r.get("releaseDate"));
+        if (release == null) {
+            Double year = posNum(r.get("year"));
+            if (year != null) release = String.valueOf(year.intValue());
+        }
+        String poster = str(r.get("posterUrl"));
+        String backdrop = str(r.get("backdropUrl"));
+        return new MediaItem(
+                id.longValue(),
+                t.mediaType(),
+                t.contentKind(),
+                pickTitle(r),
+                str(r.get("overview")) != null ? str(r.get("overview")) : "",
+                poster,
+                backdrop != null ? backdrop : poster,
+                rating != null ? Math.round(rating * 10) / 10d : null,
+                release,
+                str(r.get("genre")));
+    }
+
+    /** Home: as linhas de carrossel ({key, title, items}) + destaques opcionais. */
+    public HomeFeed homeFromRows(JsonNode rows, JsonNode featuredArr) {
+        List<HomeSection> sections = new ArrayList<>();
+        for (JsonNode n : asArray(rows)) {
+            JsonNode row = asObject(n);
+            if (row == null) continue;
+            String key = str(row.get("key"));
+            String title = str(row.get("title"));
+            List<MediaItem> items = new ArrayList<>();
+            for (JsonNode it : asArray(row.get("items"))) {
+                MediaItem mi = toMediaItemWeb(it);
+                if (mi != null) items.add(mi);
+            }
+            items = dedupe(items);
+            if (items.isEmpty()) continue;
+            sections.add(
+                    new HomeSection(
+                            key != null ? key : "row",
+                            title != null ? title : prettifyKey(key != null ? key : "row"),
+                            items));
+        }
+
+        List<MediaItem> featured = new ArrayList<>();
+        for (JsonNode n : asArray(featuredArr)) {
+            MediaItem mi = toMediaItemWeb(n);
+            if (mi != null) featured.add(mi);
+        }
+        featured = dedupe(featured);
+        if (featured.isEmpty() && !sections.isEmpty()) {
+            featured = sections.get(0).items().stream().limit(6).toList();
+        }
+        return new HomeFeed(featured, sections);
+    }
+
+    /** Fontes de vídeo lidas da página /watch do site novo. */
+    public List<MediaVideo> streamsFromSources(JsonNode sources) {
+        List<MediaVideo> out = new ArrayList<>();
+        for (JsonNode n : asArray(sources)) {
+            JsonNode s = asObject(n);
+            if (s == null) continue;
+            String url = str(s.get("url"));
+            if (url == null) continue;
+            String label = str(s.get("label"));
+            if (label == null) label = str(s.get("audio"));
+            boolean hd = s.path("hd").asBoolean(false);
+            out.add(new MediaVideo(label != null ? label : "Padrão", url, str(s.get("audio")), hd));
+        }
+        return out;
+    }
+
+    private List<CastMember> castFromWeb(JsonNode arr) {
+        List<CastMember> out = new ArrayList<>();
+        for (JsonNode n : asArray(arr)) {
+            JsonNode c = asObject(n);
+            if (c == null) continue;
+            String name = str(c.get("name"));
+            if (name == null) continue;
+            out.add(new CastMember(name, str(c.get("character")), str(c.get("photoUrl"))));
+            if (out.size() == 20) break;
+        }
+        return out;
+    }
+
+    private static JsonNode orEmpty(JsonNode n) {
+        return n != null && n.isObject() ? n : tools.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    }
+
+    /**
+     * O que a página de detalhe do site novo espalha em três props:
+     *
+     *   header  {type, id, title, posterUrl, meta: "2002 · Animação"}
+     *   info    {title, overview, cast[], trailers[]}
+     *   ld      o JSON-LD schema.org: genre[], datePublished, aggregateRating,
+     *           duration "PT1H46M" — nem toda página tem, então tudo é opcional
+     */
+    private record WebHeader(
+            String title,
+            String overview,
+            String poster,
+            String release,
+            String genre,
+            List<String> genres,
+            Double rating,
+            Integer runtime,
+            String trailer,
+            List<CastMember> cast) {}
+
+    private static final Pattern ISO_DURATION = Pattern.compile("PT(?:(\\d+)H)?(?:(\\d+)M)?");
+
+    private WebHeader webHeader(JsonNode header, JsonNode info, JsonNode ld) {
+        JsonNode h = orEmpty(header), i = orEmpty(info), l = orEmpty(ld);
+
+        String title = str(i.get("title"));
+        if (title == null) title = str(h.get("title"));
+        if (title == null) title = str(l.get("name"));
+
+        String overview = str(i.get("overview"));
+        if (overview == null) overview = str(l.get("description"));
+
+        String poster = str(h.get("posterUrl"));
+        if (poster == null) poster = str(l.get("image"));
+
+        // meta = "2002 · Animação": ano e gênero principal, fallback do JSON-LD
+        String year = null, metaGenre = null;
+        String meta = str(h.get("meta"));
+        if (meta != null) {
+            String[] parts = meta.split("·");
+            String y = parts[0].trim();
+            if (y.matches("\\d{4}.*")) year = y.substring(0, 4);
+            if (parts.length > 1) metaGenre = parts[1].trim();
+        }
+        String release = str(l.get("datePublished"));
+        if (release == null) release = year;
+
+        List<String> genres = new ArrayList<>();
+        JsonNode g = l.get("genre");
+        if (g != null && g.isArray()) {
+            for (JsonNode x : g) if (str(x) != null) genres.add(str(x));
+        } else if (str(g) != null) {
+            genres.add(str(g));
+        }
+        if (genres.isEmpty() && metaGenre != null) genres.add(metaGenre);
+
+        Double rating = num(l.path("aggregateRating").get("ratingValue"));
+
+        Integer runtime = null;
+        String dur = str(l.get("duration"));
+        if (dur != null) {
+            Matcher m = ISO_DURATION.matcher(dur);
+            if (m.matches()) {
+                int mins = (m.group(1) != null ? Integer.parseInt(m.group(1)) * 60 : 0)
+                        + (m.group(2) != null ? Integer.parseInt(m.group(2)) : 0);
+                if (mins > 0) runtime = mins;
+            }
+        }
+
+        String trailer = null;
+        for (JsonNode t : asArray(i.get("trailers"))) {
+            JsonNode to = asObject(t);
+            String u = to != null ? str(to.get("url")) : null;
+            if (u != null) {
+                trailer = u;
+                break;
+            }
+        }
+
+        return new WebHeader(
+                title != null ? title : "Sem título",
+                overview != null ? overview : "",
+                poster,
+                release,
+                metaGenre != null ? metaGenre : (genres.isEmpty() ? null : genres.get(0)),
+                genres,
+                rating != null ? Math.round(rating * 10) / 10d : null,
+                runtime,
+                trailer,
+                castFromWeb(i.get("cast")));
+    }
+
+    /** Detalhe de filme montado a partir da página /movie/ID do site novo. */
+    public MediaDetail movieDetailFromWeb(
+            JsonNode header, JsonNode info, JsonNode ld, String backdropUrl, long id) {
+        WebHeader w = webHeader(header, info, ld);
+        return new MediaDetail(
+                id,
+                MediaType.MOVIE,
+                null,
+                w.title(),
+                w.overview(),
+                w.poster(),
+                backdropUrl != null ? backdropUrl : w.poster(),
+                w.rating(),
+                w.release(),
+                w.genre(),
+                w.runtime(),
+                w.trailer(),
+                w.genres(),
+                w.cast(),
+                List.of(),
+                List.of());
+    }
+
+    /** Temporada como a página de série/anime lista: id interno (pro BFF) + número. */
+    public record SeasonRef(long id, int number, String name) {}
+
+    public List<SeasonRef> seasonRefs(JsonNode seasons) {
+        List<SeasonRef> out = new ArrayList<>();
+        for (JsonNode n : asArray(seasons)) {
+            JsonNode s = asObject(n);
+            if (s == null) continue;
+            Double id = posNum(s.get("id"));
+            if (id == null) continue;
+            Double sn = posNum(nullish(s, "number", "season_number", "seasonNumber"));
+            int number = sn != null ? sn.intValue() : out.size() + 1;
+            String name = str(s.get("name"));
+            out.add(new SeasonRef(id.longValue(), number, name != null ? name : "Temporada " + number));
+        }
+        out.sort(Comparator.comparingInt(SeasonRef::number));
+        return out;
+    }
+
+    /**
+     * Episódios de uma temporada vindos do BFF ({series|animes}/season/ID).
+     *
+     * O episodeNumber é o do GoCine, sem renumerar: em anime ele é absoluto (a
+     * temporada 2 de Naruto começa no 53) e é exatamente esse número que a
+     * página /watch espera de volta.
+     */
+    public List<Episode> episodesFromBff(JsonNode payload) {
+        JsonNode raw = payload != null && payload.isObject() ? payload.get("episodes") : payload;
+        List<Episode> out = new ArrayList<>();
+        List<JsonNode> rows = asArray(raw);
+        for (int i = 0; i < rows.size(); i++) {
+            JsonNode e = asObject(rows.get(i));
+            if (e == null) continue;
+            Double eid = posNum(e.get("id"));
+            if (eid == null) continue;
+            Double en = posNum(nullish(e, "episode_number", "number"));
+            String title = str(e.get("name"));
+            if (title == null) title = str(e.get("title"));
+            int number = en != null ? en.intValue() : i + 1;
+            // still_path é w500; o _tv é "original", pesado demais para miniatura
+            String still = str(e.get("still_path"));
+            if (still == null) still = str(e.get("still_path_tv"));
+            Double runtime = posNum(e.get("runtime"));
+            out.add(
+                    new Episode(
+                            eid.longValue(),
+                            number,
+                            title != null ? title : "Episódio " + number,
+                            str(e.get("overview")) != null ? str(e.get("overview")) : "",
+                            still,
+                            runtime != null ? runtime.intValue() : null));
+        }
+        out.sort(Comparator.comparingInt(Episode::episodeNumber));
+        return out;
+    }
+
+    /** Detalhe de série/anime a partir da página /series|anime/ID + BFF de temporadas. */
+    public MediaDetail seriesDetailFromWeb(
+            JsonNode header,
+            JsonNode info,
+            JsonNode ld,
+            String backdropUrl,
+            List<SeasonRef> refs,
+            List<List<Episode>> episodesBySeason,
+            long id,
+            ContentKind kind) {
+        WebHeader w = webHeader(header, info, ld);
+        List<Season> seasons = new ArrayList<>();
+        for (int i = 0; i < refs.size(); i++) {
+            SeasonRef ref = refs.get(i);
+            List<Episode> eps = i < episodesBySeason.size() ? episodesBySeason.get(i) : List.of();
+            seasons.add(new Season(ref.number(), ref.name(), eps.size(), eps));
+        }
+        return new MediaDetail(
+                id,
+                MediaType.TV,
+                kind,
+                w.title(),
+                w.overview(),
+                w.poster(),
+                backdropUrl != null ? backdropUrl : w.poster(),
+                w.rating(),
+                w.release(),
+                w.genre(),
+                null,
+                w.trailer(),
+                w.genres(),
+                w.cast(),
+                List.of(),
+                seasons);
+    }
 }

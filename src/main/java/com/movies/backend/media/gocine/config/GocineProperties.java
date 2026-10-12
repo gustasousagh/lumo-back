@@ -3,38 +3,68 @@ package com.movies.backend.media.gocine.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Credenciais do GoCine. Vêm de GOCINE_API_URL e GOCINE_JWT_SECRET — este é o
- * único lugar da stack que conhece o token (antes ficava no servidor do Next).
+ * Credenciais e endereços do GoCine.
+ *
+ * O GoCine trocou de backend: o antigo `siteapi` (token fixo na URL) saiu do ar
+ * e o catálogo passou a viver atrás de uma sessão autenticada em
+ * `web.gocine.app` — login por e-mail/senha, perfil selecionado, cookie de
+ * sessão. Por isso aqui agora moram as credenciais da conta, e não mais um
+ * token avulso.
  */
 @ConfigurationProperties(prefix = "gocine")
 public class GocineProperties {
 
-    /** Base da API, sem barra no fim. Ex.: https://siteapi.gocine.app/api */
-    private String apiUrl = "";
+    /** Base do site novo, sem barra no fim. Ex.: https://web.gocine.app */
+    private String webUrl = "https://web.gocine.app";
 
-    /** Token de acesso. Vai no header Authorization e no query param `user`. */
-    private String token = "";
+    /** E-mail da conta GoCine usada para logar. */
+    private String email = "";
 
-    /** Por quantos minutos guardar as respostas em memória. */
+    /** Senha da conta GoCine. */
+    private String password = "";
+
+    /**
+     * Id do perfil a selecionar depois do login. Zero ou negativo = pega o
+     * primeiro perfil da conta automaticamente.
+     */
+    private long profileId = 0;
+
+    /** Por quantos minutos guardar as páginas de catálogo em memória. */
     private int cacheMinutes = 5;
 
-    /** Teto de entradas no cache (busca é ilimitada por natureza). */
+    /** Teto de entradas no cache. */
     private int cacheMaxEntries = 500;
 
-    public String getApiUrl() {
-        return apiUrl;
+    public String getWebUrl() {
+        return webUrl;
     }
 
-    public void setApiUrl(String apiUrl) {
-        this.apiUrl = apiUrl;
+    public void setWebUrl(String webUrl) {
+        this.webUrl = webUrl;
     }
 
-    public String getToken() {
-        return token;
+    public String getEmail() {
+        return email;
     }
 
-    public void setToken(String token) {
-        this.token = token;
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public long getProfileId() {
+        return profileId;
+    }
+
+    public void setProfileId(long profileId) {
+        this.profileId = profileId;
     }
 
     public int getCacheMinutes() {
@@ -54,17 +84,16 @@ public class GocineProperties {
     }
 
     /** Base normalizada (sem barras sobrando no fim). */
-    public String normalizedBaseUrl() {
-        if (apiUrl == null || apiUrl.isBlank()) {
-            throw new IllegalStateException("GOCINE_API_URL não configurada");
+    public String normalizedWebUrl() {
+        if (webUrl == null || webUrl.isBlank()) {
+            throw new IllegalStateException("GOCINE_WEB_URL não configurada");
         }
-        return apiUrl.replaceAll("/+$", "");
+        return webUrl.replaceAll("/+$", "");
     }
 
-    public String requireToken() {
-        if (token == null || token.isBlank()) {
-            throw new IllegalStateException("GOCINE_JWT_SECRET não configurada");
+    public void requireCredentials() {
+        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException("GOCINE_EMAIL/GOCINE_PASSWORD não configurados");
         }
-        return token;
     }
 }
