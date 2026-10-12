@@ -12,6 +12,9 @@ import com.movies.backend.media.gocine.dto.MediaBrowseResponses.StreamOption;
 import com.movies.backend.media.gocine.dto.MediaBrowseResponses.StreamResponse;
 import com.movies.backend.media.gocine.service.GocineService;
 import com.movies.backend.media.gocine.service.MediaDownloadService;
+import com.movies.backend.media.local.service.LocalCatalogService;
+import com.movies.backend.security.CurrentUser;
+import org.springframework.security.core.Authentication;
 import java.util.List;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -36,10 +39,18 @@ public class MediaBrowseController {
 
     private final GocineService gocineService;
     private final MediaDownloadService downloadService;
+    private final LocalCatalogService localCatalog;
+    private final CurrentUser currentUser;
 
-    public MediaBrowseController(GocineService gocineService, MediaDownloadService downloadService) {
+    public MediaBrowseController(
+            GocineService gocineService,
+            MediaDownloadService downloadService,
+            LocalCatalogService localCatalog,
+            CurrentUser currentUser) {
         this.gocineService = gocineService;
         this.downloadService = downloadService;
+        this.localCatalog = localCatalog;
+        this.currentUser = currentUser;
     }
 
     /** GET /api/media/home -> destaques + seções de carrossel. */
@@ -61,7 +72,8 @@ public class MediaBrowseController {
     public DetailResponse detail(
             @RequestParam("type") String type,
             @RequestParam("id") long id,
-            @RequestParam(name = "kind", required = false) String kind) {
+            @RequestParam(name = "kind", required = false) String kind,
+            Authentication auth) {
 
         if (id <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "id inválido");
         MediaType mediaType = MediaType.from(type);
@@ -77,6 +89,8 @@ public class MediaBrowseController {
         if (detail == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "não encontrado");
         }
+        // conta para o "Bombando" do catálogo local desde já, mesmo navegando pelo GoCine
+        localCatalog.recordView(mediaType, detail.contentKind(), id, currentUser.require(auth).getId());
         return DetailResponse.from(detail);
     }
 

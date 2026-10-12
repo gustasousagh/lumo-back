@@ -110,6 +110,27 @@ public class GocineService {
         }
     }
 
+    /** Um título da listagem do catálogo. */
+    public record CatalogEntry(long id, String title) {}
+
+    /**
+     * Uma página (12 itens, mais novos primeiro) da listagem completa de um
+     * catálogo: "latestMovies", "latestseries" ou "latestanimes". Lista vazia
+     * quando a página passou do fim.
+     */
+    public List<CatalogEntry> listCatalog(String list, int page) {
+        JsonNode res = client.bff("genres/" + list + "/all?page=" + page);
+        List<CatalogEntry> out = new ArrayList<>();
+        for (JsonNode n : res.path("data")) {
+            long id = n.path("id").asLong(0);
+            if (id <= 0) continue;
+            String title = n.path("title").asString(null);
+            if (title == null) title = n.path("name").asString(null);
+            out.add(new CatalogEntry(id, title));
+        }
+        return out;
+    }
+
     /** Detalhe de filme. Devolve null quando o GoCine não conhece o id. */
     public MediaDetail getMovieDetail(long id) {
         String flight = client.page("/movie/" + id, true);

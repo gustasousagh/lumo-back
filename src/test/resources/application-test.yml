@@ -13,3 +13,6 @@ spring:
 app:
   jwt:
     secret: chave-de-teste-com-pelo-menos-32-caracteres-ok
+
+local-import:
+  enabled: false

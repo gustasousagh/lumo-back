@@ -71,6 +71,16 @@ gocine:
   cache-minutes: ${GOCINE_CACHE_MINUTES:5}
   cache-max-entries: ${GOCINE_CACHE_MAX_ENTRIES:500}
 
+# Rotina que copia o catálogo do GoCine para o banco (modo "dado local").
+# Uma coisa a cada tick: uma página da listagem ou um título completo; dentro
+# de uma série, um episódio a cada episode-delay-ms.
+local-import:
+  enabled: ${LOCAL_IMPORT_ENABLED:true}
+  tick-ms: ${LOCAL_IMPORT_TICK_MS:10000}
+  episode-delay-ms: ${LOCAL_IMPORT_EPISODE_DELAY_MS:2000}
+  refresh-hours: ${LOCAL_IMPORT_REFRESH_HOURS:6}
+  max-attempts: 3
+
 # Configurações da própria aplicação
 app:
   # URL do front (usada nos links dos emails de confirmação/reset)
