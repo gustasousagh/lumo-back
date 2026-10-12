@@ -5,16 +5,19 @@ import com.movies.backend.media.gocine.dto.GocineTypes.MediaDetail;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
 import com.movies.backend.media.gocine.dto.GocineTypes.Season;
-import com.movies.backend.media.gocine.service.GocineService;
 import com.movies.backend.media.gocine.service.GocineService.CatalogEntry;
+import com.movies.backend.media.gocine.service.GocineService;
 import com.movies.backend.media.local.config.LocalImportProperties;
 import com.movies.backend.media.local.entity.LocalEpisode;
 import com.movies.backend.media.local.entity.LocalImportCursor;
-import com.movies.backend.media.local.entity.LocalImportItem;
 import com.movies.backend.media.local.entity.LocalImportItem.Status;
+import com.movies.backend.media.local.entity.LocalImportItem;
+import com.movies.backend.media.local.entity.LocalImportState;
 import com.movies.backend.media.local.entity.LocalKind;
 import com.movies.backend.media.local.repository.LocalImportCursorRepository;
 import com.movies.backend.media.local.repository.LocalImportItemRepository;
+import com.movies.backend.media.local.repository.LocalImportStateRepository;
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,16 +25,20 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * Rotina que copia o catálogo do GoCine para o banco local, devagar.
  *
- * A cada tick (10 s por padrão) faz UMA coisa:
+ * A cada tick (1 min por padrão) faz UMA coisa:
  *
  *   - se a fila está curta, lê a próxima página (12 títulos) da listagem de um
  *     dos catálogos — filmes, séries, animes, em rodízio — e enfileira os novos;
@@ -42,8 +49,14 @@ import tools.jackson.databind.ObjectMapper;
  * Quando a listagem de um catálogo acaba, ele dorme `refreshHours` e depois
  * relê do começo só até a primeira página sem nada novo.
  *
- * Tudo que importa (cursores, fila) fica no banco: reiniciar o Pi retoma de
- * onde parou.
+ * Tudo que importa (cursores, fila, pausa) fica no banco: reiniciar o Pi
+ * retoma de onde parou.
+ *
+ * SEM REPETIÇÃO: a fila e os títulos têm chave única (kind, id do GoCine); a
+ * descoberta pula o que já está na fila, e título DONE nunca volta para ela.
+ *
+ * Roda numa thread só sua. O agendador padrão do Spring é o mesmo do broker do
+ * WebSocket, e as pausas entre episódios travariam o tempo real do app.
  */
 @Component
 public class LocalImporter {
@@ -70,34 +83,70 @@ public class LocalImporter {
     /** O que está sendo importado agora, para o status no header. */
     private volatile String current;
 
+    private final LocalImportStateRepository state;
+    private volatile boolean paused;
+    private ScheduledExecutorService worker;
+
     public LocalImporter(
             GocineService gocine,
             LocalCatalogWriter writer,
             LocalImportItemRepository queue,
             LocalImportCursorRepository cursors,
             LocalImportProperties props,
+            LocalImportStateRepository state,
             ObjectMapper om) {
         this.gocine = gocine;
         this.writer = writer;
         this.queue = queue;
         this.cursors = cursors;
         this.props = props;
+        this.state = state;
         this.om = om;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void start() {
+        if (!props.isEnabled()) return;
+        paused = state.findById(LocalImportState.SINGLETON).map(LocalImportState::isPaused).orElse(false);
+        worker = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "local-import");
+            t.setDaemon(true);
+            return t;
+        });
+        worker.scheduleWithFixedDelay(this::tick, props.getInitialDelayMs(), props.getTickMs(), TimeUnit.MILLISECONDS);
+        log.info("Importação local ligada: a cada {}s{}", props.getTickMs() / 1000, paused ? " (pausada)" : "");
+    }
+
+    @PreDestroy
+    public void stop() {
+        if (worker != null) worker.shutdownNow();
+    }
+
+    public boolean isPaused() {
+        return paused;
+    }
+
+    /** Pausa ou retoma. Uma série no meio para no próximo episódio e recomeça depois. */
+    public void setPaused(boolean value) {
+        LocalImportState s = state.findById(LocalImportState.SINGLETON).orElseGet(LocalImportState::new);
+        s.setPaused(value);
+        state.save(s);
+        paused = value;
+        log.info("Importação local {}", value ? "pausada" : "retomada");
     }
 
     public String current() {
         return current;
     }
 
-    @Scheduled(
-            initialDelayString = "${local-import.initial-delay-ms:60000}",
-            fixedDelayString = "${local-import.tick-ms:10000}")
-    public void tick() {
-        if (!props.isEnabled()) return;
+    void tick() {
+        if (paused) return;
         try {
             if (queue.countByStatus(Status.PENDING) < QUEUE_LOW_WATER && discoverOnce()) return;
             importNext();
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // Throwable de propósito: no scheduleWithFixedDelay, qualquer coisa que
+            // escape cancela a rotina para sempre, sem aviso
             log.warn("Importação local: {}", e.toString());
         }
     }
@@ -166,6 +215,9 @@ public class LocalImporter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return; // desligando: fica PENDING e retoma no próximo arranque
+        } catch (PausedException e) {
+            log.info("Pausado no meio de {}; recomeça quando retomar", current);
+            return; // fica PENDING, sem gastar tentativa
         } catch (Exception e) {
             item.setAttempts(item.getAttempts() + 1);
             item.setLastError(LocalCatalogWriter.cut(e.toString(), 500));
@@ -195,6 +247,7 @@ public class LocalImporter {
         int failed = 0;
         for (Season s : d.seasons()) {
             for (Episode ep : s.episodes()) {
+                if (paused) throw new PausedException();
                 Thread.sleep(props.getEpisodeDelayMs());
                 List<MediaVideo> streams = episodeStreams(kind, id, s.seasonNumber(), ep.episodeNumber());
                 if (streams.isEmpty()) failed++;
@@ -217,6 +270,9 @@ public class LocalImporter {
         writer.save(kind, d, null, eps);
         return true;
     }
+
+    /** Pausaram no meio de uma série. */
+    private static final class PausedException extends RuntimeException {}
 
     /** Player de um episódio, com uma segunda tentativa; vazio se não houver. */
     private List<MediaVideo> episodeStreams(LocalKind kind, long id, int season, int episode)

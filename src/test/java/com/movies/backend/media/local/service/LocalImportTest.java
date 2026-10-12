@@ -8,7 +8,9 @@ import com.movies.backend.media.gocine.dto.GocineTypes.HomeSection;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaDetail;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.local.entity.LocalImportItem.Status;
+import com.movies.backend.media.local.repository.LocalImportCursorRepository;
 import com.movies.backend.media.local.repository.LocalImportItemRepository;
+import com.movies.backend.media.local.repository.LocalTitleRepository;
 import com.movies.backend.post.entity.Post;
 import com.movies.backend.post.repository.PostRepository;
 import com.sun.net.httpserver.HttpExchange;
@@ -55,6 +57,8 @@ class LocalImportTest {
     @Autowired LocalCatalogService catalog;
     @Autowired LocalImportItemRepository queue;
     @Autowired PostRepository posts;
+    @Autowired LocalImportCursorRepository cursors;
+    @Autowired LocalTitleRepository titles;
 
     @Test
     void importaEServeDoBanco() {
@@ -95,6 +99,26 @@ class LocalImportTest {
         assertThat(home.sections().get(0).items()).extracting("title").containsExactly("Naruto");
         assertThat(home.sections().get(2).items().get(0).voteAverage()).isEqualTo(9.0);
         assertThat(catalog.status().episodes()).isEqualTo(221);
+
+        // não repete: reler a listagem do zero não enfileira nem duplica nada
+        cursors.findAll().forEach(c -> {
+            c.setNextPage(1);
+            c.setExhausted(false);
+            c.setRefreshing(false);
+            cursors.save(c);
+        });
+        for (int i = 0; i < 6; i++) importer.discoverOnce();
+        assertThat(queue.count()).isEqualTo(3);
+        assertThat(queue.countByStatus(Status.PENDING)).isZero();
+        assertThat(titles.count()).isEqualTo(3);
+
+        // pausado, a rodada não faz nada — e a pausa fica gravada
+        importer.setPaused(true);
+        cursors.deleteAll();
+        importer.tick();
+        assertThat(cursors.count()).isZero();
+        assertThat(catalog.status().paused()).isTrue();
+        importer.setPaused(false);
     }
 
     /* --------------------------------------------------------- GoCine falso */

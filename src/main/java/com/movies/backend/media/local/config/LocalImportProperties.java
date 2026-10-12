@@ -15,7 +15,10 @@ public class LocalImportProperties {
     private boolean enabled = true;
 
     /** Intervalo entre um título (ou uma página da listagem) e o próximo. */
-    private long tickMs = 10_000;
+    private long tickMs = 60_000;
+
+    /** Espera depois do arranque antes da primeira rodada. */
+    private long initialDelayMs = 60_000;
 
     /** Pausa entre os episódios de uma mesma série (cada um é uma requisição). */
     private long episodeDelayMs = 2_000;
@@ -30,6 +33,8 @@ public class LocalImportProperties {
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public long getTickMs() { return tickMs; }
     public void setTickMs(long tickMs) { this.tickMs = tickMs; }
+    public long getInitialDelayMs() { return initialDelayMs; }
+    public void setInitialDelayMs(long initialDelayMs) { this.initialDelayMs = initialDelayMs; }
     public long getEpisodeDelayMs() { return episodeDelayMs; }
     public void setEpisodeDelayMs(long episodeDelayMs) { this.episodeDelayMs = episodeDelayMs; }
     public int getRefreshHours() { return refreshHours; }

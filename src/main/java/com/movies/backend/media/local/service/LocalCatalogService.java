@@ -324,7 +324,8 @@ public class LocalCatalogService {
             long episodes,
             long pending,
             long failed,
-            String importing) {}
+            String importing,
+            boolean paused) {}
 
     public Status status() {
         return new Status(
@@ -334,6 +335,7 @@ public class LocalCatalogService {
                 episodes.count(),
                 queue.countByStatus(com.movies.backend.media.local.entity.LocalImportItem.Status.PENDING),
                 queue.countByStatus(com.movies.backend.media.local.entity.LocalImportItem.Status.FAILED),
-                importer.current());
+                importer.current(),
+                importer.isPaused());
     }
 }
