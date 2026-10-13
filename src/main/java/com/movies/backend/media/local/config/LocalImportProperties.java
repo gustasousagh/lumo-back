@@ -14,8 +14,11 @@ public class LocalImportProperties {
     /** Liga a rotina. Desligada nos testes. */
     private boolean enabled = true;
 
-    /** Intervalo entre um título (ou uma página da listagem) e o próximo. */
+    /** Intervalo entre um título (ou uma página da listagem) e o próximo, enquanto houver trabalho. */
     private long tickMs = 5_000;
+
+    /** Intervalo quando não há nada a fazer (fila vazia e listagens em dia). */
+    private long idleMs = 300_000;
 
     /** Espera depois do arranque antes da primeira rodada. */
     private long initialDelayMs = 60_000;
@@ -33,6 +36,8 @@ public class LocalImportProperties {
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public long getTickMs() { return tickMs; }
     public void setTickMs(long tickMs) { this.tickMs = tickMs; }
+    public long getIdleMs() { return idleMs; }
+    public void setIdleMs(long idleMs) { this.idleMs = idleMs; }
     public long getInitialDelayMs() { return initialDelayMs; }
     public void setInitialDelayMs(long initialDelayMs) { this.initialDelayMs = initialDelayMs; }
     public long getEpisodeDelayMs() { return episodeDelayMs; }

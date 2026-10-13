@@ -3,6 +3,7 @@ package com.movies.backend.media.gocine.client;
 import com.movies.backend.media.gocine.config.GocineProperties;
 import com.movies.backend.media.gocine.exception.GocineAuthException;
 import com.movies.backend.media.gocine.exception.GocineNotFoundException;
+import com.movies.backend.media.gocine.exception.GocineUnavailableException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.net.CookieManager;
@@ -211,6 +212,9 @@ public class GocineWebClient {
     private String fetchPage(String path) {
         String base = base();
         HttpResponse<String> res = send(base + path, null, "text/html");
+        if (res.statusCode() == 429) {
+            throw new GocineUnavailableException("GoCine limitou as requisições (429) em " + path);
+        }
         if (followMove(base, res.uri())) return null; // reloga no host novo
         String finalPath = res.uri() == null ? "" : res.uri().getPath();
         if (finalPath.startsWith("/login") || finalPath.startsWith("/profiles")) {
@@ -248,6 +252,9 @@ public class GocineWebClient {
         }
         if (res.statusCode() == 401) {
             throw new GocineAuthException("BFF " + path + " pediu login mesmo após relogar");
+        }
+        if (res.statusCode() == 429) {
+            throw new GocineUnavailableException("GoCine limitou as requisições (429) em " + path);
         }
         if (res.statusCode() == 404) {
             throw new GocineNotFoundException(res.body());

@@ -77,6 +77,8 @@ gocine:
 local-import:
   enabled: ${LOCAL_IMPORT_ENABLED:true}
   tick-ms: ${LOCAL_IMPORT_TICK_MS:5000}
+  # com tudo importado e as listagens em dia, só olha de novo a cada 5 min
+  idle-ms: ${LOCAL_IMPORT_IDLE_MS:300000}
   episode-delay-ms: ${LOCAL_IMPORT_EPISODE_DELAY_MS:2000}
   refresh-hours: ${LOCAL_IMPORT_REFRESH_HOURS:6}
   max-attempts: 3

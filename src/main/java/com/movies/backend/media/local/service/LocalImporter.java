@@ -1,7 +1,7 @@
 package com.movies.backend.media.local.service;
 
 import com.movies.backend.media.gocine.dto.GocineTypes.Episode;
-import com.movies.backend.media.gocine.exception.GocineAuthException;
+import com.movies.backend.media.gocine.exception.GocineUnavailableException;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaDetail;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
@@ -39,7 +39,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Rotina que copia o catálogo do GoCine para o banco local, devagar.
  *
- * A cada tick (5 s por padrão) faz UMA coisa:
+ * A cada tick faz UMA coisa (5 s entre uma e outra enquanto houver trabalho;
+ * com tudo em dia, só olha de novo a cada `idleMs`, 5 min por padrão):
  *
  *   - se a fila está curta, lê a próxima página (12 títulos) da listagem de um
  *     dos catálogos — filmes, séries, animes, em rodízio — e enfileira os novos;
@@ -118,8 +119,21 @@ public class LocalImporter {
             t.setDaemon(true);
             return t;
         });
-        worker.scheduleWithFixedDelay(this::tick, props.getInitialDelayMs(), props.getTickMs(), TimeUnit.MILLISECONDS);
-        log.info("Importação local ligada: a cada {}s{}", props.getTickMs() / 1000, paused ? " (pausada)" : "");
+        worker.schedule(this::loop, props.getInitialDelayMs(), TimeUnit.MILLISECONDS);
+        log.info("Importação local ligada: a cada {}s com trabalho, {}s parada{}",
+                props.getTickMs() / 1000, props.getIdleMs() / 1000, paused ? " (pausada)" : "");
+    }
+
+    /** Uma rodada e agenda a próxima: rápido se fez algo, devagar se não havia nada. */
+    private void loop() {
+        boolean worked = false;
+        try {
+            worked = tick();
+        } finally {
+            if (!worker.isShutdown()) {
+                worker.schedule(this::loop, worked ? props.getTickMs() : props.getIdleMs(), TimeUnit.MILLISECONDS);
+            }
+        }
     }
 
     @PreDestroy
@@ -144,19 +158,26 @@ public class LocalImporter {
         return current;
     }
 
-    void tick() {
-        if (paused || Instant.now().isBefore(backoffUntil)) return;
+    /** Uma rodada. true quando havia trabalho (descobriu uma página ou importou um título). */
+    boolean tick() {
+        if (paused || Instant.now().isBefore(backoffUntil)) return false;
         try {
-            if (queue.countByStatus(Status.PENDING) < QUEUE_LOW_WATER && discoverOnce()) return;
-            importNext();
-        } catch (GocineAuthException e) {
-            backoffUntil = Instant.now().plus(AUTH_BACKOFF);
-            log.warn("Sem sessão no GoCine ({}); importação espera {} min", e.getMessage(), AUTH_BACKOFF.toMinutes());
+            if (queue.countByStatus(Status.PENDING) < QUEUE_LOW_WATER && discoverOnce()) return true;
+            return importNext();
+        } catch (GocineUnavailableException e) {
+            backOff(e);
+            return false;
         } catch (Throwable e) {
-            // Throwable de propósito: no scheduleWithFixedDelay, qualquer coisa que
-            // escape cancela a rotina para sempre, sem aviso
+            // Throwable de propósito: o que escapasse daqui mataria a thread da rotina
             log.warn("Importação local: {}", e.toString());
+            return false;
         }
+    }
+
+    /** O GoCine está fora ou limitando: espera, sem culpar o título. */
+    private void backOff(GocineUnavailableException e) {
+        backoffUntil = Instant.now().plus(AUTH_BACKOFF);
+        log.warn("GoCine indisponível ({}); importação espera {} min", e.getMessage(), AUTH_BACKOFF.toMinutes());
     }
 
     /* ------------------------------------------------------------ descoberta */
@@ -207,9 +228,10 @@ public class LocalImporter {
 
     /* ------------------------------------------------------------ importação */
 
-    void importNext() {
+    /** Importa o próximo da fila. false se a fila estava vazia. */
+    boolean importNext() {
         Optional<LocalImportItem> next = queue.findFirstByStatusOrderByAttemptsAscIdAsc(Status.PENDING);
-        if (next.isEmpty()) return;
+        if (next.isEmpty()) return false;
         LocalImportItem item = next.get();
         current = item.getKind() + " " + (item.getTitle() != null ? item.getTitle() : item.getSourceId());
         long started = System.currentTimeMillis();
@@ -222,16 +244,15 @@ public class LocalImporter {
             log.info("Importado {} em {}s", current, (System.currentTimeMillis() - started) / 1000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return; // desligando: fica PENDING e retoma no próximo arranque
-        } catch (GocineAuthException e) {
-            // o GoCine está sem sessão (fora, bloqueou login, mudou algo): não é
-            // culpa do título — não gasta tentativa e dá um tempo ao site
-            backoffUntil = Instant.now().plus(AUTH_BACKOFF);
-            log.warn("Sem sessão no GoCine ({}); importação espera {} min", e.getMessage(), AUTH_BACKOFF.toMinutes());
-            return;
+            return false; // desligando: fica PENDING e retoma no próximo arranque
+        } catch (GocineUnavailableException e) {
+            // GoCine fora, sem sessão ou limitando: não é culpa do título — não
+            // gasta tentativa, e a série volta inteira depois (nada pela metade)
+            backOff(e);
+            return false;
         } catch (PausedException e) {
             log.info("Pausado no meio de {}; recomeça quando retomar", current);
-            return; // fica PENDING, sem gastar tentativa
+            return false; // fica PENDING, sem gastar tentativa
         } catch (Exception e) {
             item.setAttempts(item.getAttempts() + 1);
             item.setLastError(LocalCatalogWriter.cut(e.toString(), 500));
@@ -242,6 +263,7 @@ public class LocalImporter {
         }
         item.setUpdatedAt(Instant.now());
         queue.save(item);
+        return true;
     }
 
     private boolean importMovie(long id) {
@@ -294,6 +316,8 @@ public class LocalImporter {
         for (int attempt = 1; ; attempt++) {
             try {
                 return gocine.resolveStreams(id, MediaType.TV, kind.contentKind(), season, episode);
+            } catch (GocineUnavailableException e) {
+                throw e; // GoCine fora/limitando: não grava episódio sem player
             } catch (Exception e) {
                 if (attempt >= 2) return List.of();
                 Thread.sleep(props.getEpisodeDelayMs() * 2);

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.movies.backend.media.gocine.client.GocineWebClient;
 import com.movies.backend.media.gocine.config.GocineProperties;
 import com.movies.backend.media.gocine.exception.GocineAuthException;
+import com.movies.backend.media.gocine.exception.GocineUnavailableException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -61,6 +62,9 @@ class GocineWebClientTest {
             } else if (cookie == null || !cookie.contains("gc_sess=novo")) {
                 ex.getResponseHeaders().add("Location", "/login");
                 reply(ex, 307, "");
+            } else if (uri.startsWith("/movie/429")) {
+                ex.getResponseHeaders().add("Retry-After", "60");
+                reply(ex, 429, "{}");
             } else if (uri.equals("/login")) {
                 reply(ex, 200, "<html>login</html>");
             } else {
@@ -129,5 +133,15 @@ class GocineWebClientTest {
 
         assertThat(oldSiteLogins).as("bloqueado: não insiste").hasSize(1);
         assertThat(c.base()).as("nada mudou de domínio").contains("localhost");
+    }
+
+    @Test
+    void limiteDeRequisicoesViraIndisponivelENaoErroDoTitulo() throws IOException {
+        startSites();
+        GocineWebClient c = client("http://127.0.0.1:" + newSite.getAddress().getPort());
+
+        assertThatThrownBy(() -> c.page("/movie/429", false))
+                .isInstanceOf(GocineUnavailableException.class)
+                .hasMessageContaining("429");
     }
 }
