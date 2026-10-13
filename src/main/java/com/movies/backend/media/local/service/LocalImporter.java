@@ -51,6 +51,11 @@ import tools.jackson.databind.ObjectMapper;
  * Quando a listagem de um catálogo acaba, ele dorme `refreshHours` e depois
  * relê do começo só até a primeira página sem nada novo.
  *
+ * VARREDURA POR ID: a listagem do GoCine para em ~400 páginas (os ~4.800 mais
+ * recentes), e os títulos antigos nunca aparecem nela. Então, terminada a
+ * listagem, o catálogo passa a enfileirar id por id, do maior já visto até 1,
+ * pulando o que já está na fila. Id que não existe vira GONE com uma consulta.
+ *
  * Tudo que importa (cursores, fila, pausa) fica no banco: reiniciar o Pi
  * retoma de onde parou.
  *
@@ -74,6 +79,9 @@ public class LocalImporter {
 
     /** Abaixo disso a próxima rodada descobre títulos em vez de importar. */
     private static final int QUEUE_LOW_WATER = 24;
+
+    /** Ids enfileirados por rodada de varredura. */
+    private static final int SWEEP_BATCH = 24;
 
     private final GocineService gocine;
     private final LocalCatalogWriter writer;
@@ -188,12 +196,17 @@ public class LocalImporter {
         Optional<LocalImportCursor> next =
                 LISTS.keySet().stream()
                         .map(k -> cursors.findById(k).orElseGet(() -> new LocalImportCursor(k)))
-                        .filter(c -> !c.isExhausted()
-                                || (c.getRefreshAt() != null && !now.isBefore(c.getRefreshAt())))
+                        .filter(c -> !c.isExhausted() || refreshDue(c, now) || sweepPending(c))
                         .min(Comparator.comparing(LocalImportCursor::getLastRunAt));
         if (next.isEmpty()) return false;
 
         LocalImportCursor c = next.get();
+        if (c.isExhausted() && !refreshDue(c, now)) {
+            c.setLastRunAt(now);
+            sweep(c);
+            cursors.save(c);
+            return true;
+        }
         if (c.isExhausted()) {
             // hora de procurar títulos novos: recomeça do topo
             c.setExhausted(false);
@@ -224,6 +237,38 @@ public class LocalImporter {
         }
         cursors.save(c);
         return true;
+    }
+
+    private static boolean refreshDue(LocalImportCursor c, Instant now) {
+        return c.isExhausted() && c.getRefreshAt() != null && !now.isBefore(c.getRefreshAt());
+    }
+
+    /** Listagem já percorrida inteira uma vez e a varredura por id ainda não acabou. */
+    private boolean sweepPending(LocalImportCursor c) {
+        return props.isSweepEnabled() && c.isExhausted() && !c.isRefreshing()
+                && (c.getSweepNextId() == null || c.getSweepNextId() > 0);
+    }
+
+    /** Enfileira o próximo lote de ids que a listagem não mostrou. */
+    private void sweep(LocalImportCursor c) {
+        Long from = c.getSweepNextId();
+        if (from == null) {
+            Long max = queue.maxSourceId(c.getKind());
+            from = max == null ? 0 : max;
+            log.info("Listagem de {} acabou; varrendo ids de {} até 1", c.getKind(), from);
+        }
+        long id = from;
+        int added = 0;
+        for (; id > 0 && added < SWEEP_BATCH; id--) {
+            if (queue.existsByKindAndSourceId(c.getKind(), id)) continue;
+            LocalImportItem item = new LocalImportItem();
+            item.setKind(c.getKind());
+            item.setSourceId(id);
+            queue.save(item);
+            added++;
+        }
+        c.setSweepNextId(id);
+        if (id == 0) log.info("Varredura de {} terminou", c.getKind());
     }
 
     /* ------------------------------------------------------------ importação */

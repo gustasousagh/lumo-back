@@ -218,8 +218,11 @@ public class GocineService {
         return mapper.streamsFromSources(sources);
     }
 
+    /** Página de título inexistente: o Next marca com o fallback de 404 ("Filme não encontrado"). */
     private static boolean notFound(String flight) {
         return flight != null
-                && (flight.contains("Não encontramos") || flight.contains("não existe mais"));
+                && (flight.contains("NEXT_HTTP_ERROR_FALLBACK;404")
+                        || flight.contains("Não encontramos")
+                        || flight.contains("não existe mais"));
     }
 }

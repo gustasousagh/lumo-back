@@ -37,6 +37,13 @@ public class LocalImportCursor {
 
     private Instant refreshAt;
 
+    /**
+     * Varredura por id: a listagem do GoCine só mostra os ~4.800 mais recentes,
+     * então depois dela a rotina testa id por id, do maior para o menor.
+     * null = ainda não começou; 0 = terminou; senão, o próximo id a enfileirar.
+     */
+    private Long sweepNextId;
+
     @Column(nullable = false)
     private Instant lastRunAt = Instant.EPOCH;
 
@@ -56,5 +63,7 @@ public class LocalImportCursor {
     public Instant getRefreshAt() { return refreshAt; }
     public void setRefreshAt(Instant refreshAt) { this.refreshAt = refreshAt; }
     public Instant getLastRunAt() { return lastRunAt; }
+    public Long getSweepNextId() { return sweepNextId; }
+    public void setSweepNextId(Long sweepNextId) { this.sweepNextId = sweepNextId; }
     public void setLastRunAt(Instant lastRunAt) { this.lastRunAt = lastRunAt; }
 }

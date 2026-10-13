@@ -46,6 +46,7 @@ class LocalImportTest {
         r.add("gocine.password", () -> "senha");
         r.add("gocine.profile-id", () -> "1");
         r.add("local-import.episode-delay-ms", () -> "0");
+        r.add("local-import.sweep-enabled", () -> "false"); // coberta no LocalSweepTest
     }
 
     @AfterAll

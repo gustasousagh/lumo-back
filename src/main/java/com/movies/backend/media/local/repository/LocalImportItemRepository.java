@@ -17,6 +17,9 @@ public interface LocalImportItemRepository extends JpaRepository<LocalImportItem
 
     long countByStatus(Status status);
 
+    @Query("select max(i.sourceId) from LocalImportItem i where i.kind = ?1")
+    Long maxSourceId(LocalKind kind);
+
     /** Devolve as falhas para a fila, zerando as tentativas. */
     @Modifying
     @Transactional

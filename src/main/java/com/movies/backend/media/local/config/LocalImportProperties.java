@@ -24,7 +24,10 @@ public class LocalImportProperties {
     private long initialDelayMs = 60_000;
 
     /** Pausa entre os episódios de uma mesma série (cada um é uma requisição). */
-    private long episodeDelayMs = 2_000;
+    private long episodeDelayMs = 1_000;
+
+    /** Depois da listagem, testa id por id os títulos que ela não mostra. */
+    private boolean sweepEnabled = true;
 
     /** Depois de varrer a listagem inteira, de quanto em quanto tempo procurar títulos novos. */
     private int refreshHours = 6;
@@ -40,6 +43,8 @@ public class LocalImportProperties {
     public void setIdleMs(long idleMs) { this.idleMs = idleMs; }
     public long getInitialDelayMs() { return initialDelayMs; }
     public void setInitialDelayMs(long initialDelayMs) { this.initialDelayMs = initialDelayMs; }
+    public boolean isSweepEnabled() { return sweepEnabled; }
+    public void setSweepEnabled(boolean sweepEnabled) { this.sweepEnabled = sweepEnabled; }
     public long getEpisodeDelayMs() { return episodeDelayMs; }
     public void setEpisodeDelayMs(long episodeDelayMs) { this.episodeDelayMs = episodeDelayMs; }
     public int getRefreshHours() { return refreshHours; }
