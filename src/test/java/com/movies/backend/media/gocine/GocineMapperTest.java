@@ -171,4 +171,18 @@ class GocineMapperTest {
                                 mapper.toSeriesDetail(fixture("raw-series.json"), 3556L, ContentKind.SERIES)));
         assertThat(series.get("contentKind").stringValue()).isEqualTo("series");
     }
+
+    @Test
+    @DisplayName("episódio cadastrado duas vezes no GoCine aparece uma vez só")
+    void duplicateEpisodesCollapse() {
+        JsonNode payload = json.readTree("""
+                {"episodes":[
+                  {"id":10,"episode_number":30,"name":"Ep 30"},
+                  {"id":11,"episode_number":31,"name":"Ep 31"},
+                  {"id":20,"episode_number":30,"name":"Ep 30 de novo"}
+                ]}""");
+        var eps = mapper.episodesFromBff(payload);
+        assertThat(eps).extracting("episodeNumber").containsExactly(30, 31);
+        assertThat(eps.get(0).title()).isEqualTo("Ep 30");
+    }
 }

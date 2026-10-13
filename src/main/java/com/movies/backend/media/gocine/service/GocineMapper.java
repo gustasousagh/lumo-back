@@ -743,6 +743,10 @@ public class GocineMapper {
      * O episodeNumber é o do GoCine, sem renumerar: em anime ele é absoluto (a
      * temporada 2 de Naruto começa no 53) e é exatamente esse número que a
      * página /watch espera de volta.
+     *
+     * Número repetido fica só o primeiro: o GoCine às vezes cadastra o mesmo
+     * episódio duas vezes, e como o player é buscado pelo número, o segundo só
+     * duplicava a linha na lista.
      */
     public List<Episode> episodesFromBff(JsonNode payload) {
         JsonNode raw = payload != null && payload.isObject() ? payload.get("episodes") : payload;
@@ -770,8 +774,11 @@ public class GocineMapper {
                             still,
                             runtime != null ? runtime.intValue() : null));
         }
-        out.sort(Comparator.comparingInt(Episode::episodeNumber));
-        return out;
+        Map<Integer, Episode> byNumber = new LinkedHashMap<>();
+        for (Episode ep : out) byNumber.putIfAbsent(ep.episodeNumber(), ep);
+        List<Episode> unique = new ArrayList<>(byNumber.values());
+        unique.sort(Comparator.comparingInt(Episode::episodeNumber));
+        return unique;
     }
 
     /** Detalhe de série/anime a partir da página /series|anime/ID + BFF de temporadas. */

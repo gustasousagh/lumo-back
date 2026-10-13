@@ -238,7 +238,8 @@ public class LocalImporter {
         try {
             boolean found = item.getKind() == LocalKind.MOVIE
                     ? importMovie(item.getSourceId())
-                    : importTv(item.getKind(), item.getSourceId());
+                    : importTv(item.getKind(), item.getSourceId(),
+                            item.getAttempts() + 1 >= props.getMaxAttempts());
             item.setStatus(found ? Status.DONE : Status.GONE);
             item.setLastError(null);
             log.info("Importado {} em {}s", current, (System.currentTimeMillis() - started) / 1000);
@@ -269,15 +270,24 @@ public class LocalImporter {
     private boolean importMovie(long id) {
         MediaDetail d = gocine.getMovieDetail(id);
         if (d == null) return false;
+        requireContent(d);
         List<MediaVideo> streams = gocine.resolveStreams(id, MediaType.MOVIE, null, null, null);
         if (streams.isEmpty()) throw new IllegalStateException("filme sem player");
         writer.save(LocalKind.MOVIE, d, om.writeValueAsString(streams), null);
         return true;
     }
 
-    private boolean importTv(LocalKind kind, long id) throws InterruptedException {
+    /**
+     * @param lastAttempt na última tentativa, salva mesmo com episódios sem
+     *     player — melhor a série com um buraco do que sem a série
+     */
+    private boolean importTv(LocalKind kind, long id, boolean lastAttempt) throws InterruptedException {
         MediaDetail d = gocine.getSeriesDetail(id, kind.contentKind());
         if (d == null) return false;
+        requireContent(d);
+        if (d.seasons().isEmpty() || d.seasons().stream().allMatch(s -> s.episodes().isEmpty())) {
+            throw new IllegalStateException("série veio sem episódios");
+        }
 
         List<LocalEpisode> eps = new ArrayList<>();
         int failed = 0;
@@ -300,11 +310,25 @@ public class LocalImporter {
                 eps.add(le);
             }
         }
-        if (!eps.isEmpty() && failed == eps.size()) {
+        if (failed == eps.size()) {
             throw new IllegalStateException("nenhum episódio com player (" + failed + ")");
         }
+        if (failed > 0 && !lastAttempt) {
+            throw new IllegalStateException(failed + " de " + eps.size() + " episódios sem player");
+        }
+        if (failed > 0) log.warn("{}: salvando com {} episódio(s) sem player", current, failed);
         writer.save(kind, d, null, eps);
         return true;
+    }
+
+    /**
+     * Página que veio sem os dados (erro momentâneo do GoCine) não pode ser
+     * salva como se fosse o título: vira erro e é tentada de novo.
+     */
+    private static void requireContent(MediaDetail d) {
+        if (d.title() == null || d.title().isBlank() || "Sem título".equals(d.title())) {
+            throw new IllegalStateException("página do título veio sem dados");
+        }
     }
 
     /** Pausaram no meio de uma série. */
