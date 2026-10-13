@@ -1,6 +1,7 @@
 package com.movies.backend.media.local.service;
 
 import com.movies.backend.media.gocine.dto.GocineTypes.Episode;
+import com.movies.backend.media.gocine.exception.GocineAuthException;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaDetail;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
@@ -38,7 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Rotina que copia o catálogo do GoCine para o banco local, devagar.
  *
- * A cada tick (1 min por padrão) faz UMA coisa:
+ * A cada tick (5 s por padrão) faz UMA coisa:
  *
  *   - se a fila está curta, lê a próxima página (12 títulos) da listagem de um
  *     dos catálogos — filmes, séries, animes, em rodízio — e enfileira os novos;
@@ -85,6 +86,10 @@ public class LocalImporter {
 
     private final LocalImportStateRepository state;
     private volatile boolean paused;
+
+    /** Sem sessão no GoCine: espera até aqui antes de tentar de novo. */
+    private static final Duration AUTH_BACKOFF = Duration.ofMinutes(5);
+    private volatile Instant backoffUntil = Instant.EPOCH;
     private ScheduledExecutorService worker;
 
     public LocalImporter(
@@ -140,10 +145,13 @@ public class LocalImporter {
     }
 
     void tick() {
-        if (paused) return;
+        if (paused || Instant.now().isBefore(backoffUntil)) return;
         try {
             if (queue.countByStatus(Status.PENDING) < QUEUE_LOW_WATER && discoverOnce()) return;
             importNext();
+        } catch (GocineAuthException e) {
+            backoffUntil = Instant.now().plus(AUTH_BACKOFF);
+            log.warn("Sem sessão no GoCine ({}); importação espera {} min", e.getMessage(), AUTH_BACKOFF.toMinutes());
         } catch (Throwable e) {
             // Throwable de propósito: no scheduleWithFixedDelay, qualquer coisa que
             // escape cancela a rotina para sempre, sem aviso
@@ -215,6 +223,12 @@ public class LocalImporter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return; // desligando: fica PENDING e retoma no próximo arranque
+        } catch (GocineAuthException e) {
+            // o GoCine está sem sessão (fora, bloqueou login, mudou algo): não é
+            // culpa do título — não gasta tentativa e dá um tempo ao site
+            backoffUntil = Instant.now().plus(AUTH_BACKOFF);
+            log.warn("Sem sessão no GoCine ({}); importação espera {} min", e.getMessage(), AUTH_BACKOFF.toMinutes());
+            return;
         } catch (PausedException e) {
             log.info("Pausado no meio de {}; recomeça quando retomar", current);
             return; // fica PENDING, sem gastar tentativa

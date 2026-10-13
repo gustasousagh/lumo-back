@@ -1,5 +1,6 @@
 package com.movies.backend.exception;
 
+import com.movies.backend.media.gocine.exception.GocineAuthException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +36,13 @@ public class GlobalExceptionHandler {
         }
         String firstMessage = fields.values().stream().findFirst().orElse("Dados inválidos");
         return build(HttpStatus.BAD_REQUEST, firstMessage, fields);
+    }
+
+    /** Sem sessão no GoCine (fora do ar, login bloqueado): é indisponibilidade, não bug. */
+    @ExceptionHandler(GocineAuthException.class)
+    public ResponseEntity<Map<String, Object>> handleGocineAuth(GocineAuthException ex) {
+        log.warn("Catálogo do GoCine indisponível: {}", ex.getMessage());
+        return build(HttpStatus.SERVICE_UNAVAILABLE, "Catálogo do GoCine indisponível agora. Tente o modo local.", null);
     }
 
     @ExceptionHandler(Exception.class)

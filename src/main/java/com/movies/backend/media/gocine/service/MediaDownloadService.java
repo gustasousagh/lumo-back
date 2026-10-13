@@ -1,6 +1,7 @@
 package com.movies.backend.media.gocine.service;
 
 import com.movies.backend.exception.ApiException;
+import com.movies.backend.media.gocine.client.GocineWebClient;
 import com.movies.backend.media.gocine.dto.GocineTypes.ContentKind;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaType;
 import com.movies.backend.media.gocine.dto.GocineTypes.MediaVideo;
@@ -61,9 +62,11 @@ public class MediaDownloadService {
                     + "(KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
     private final GocineService gocineService;
+    private final GocineWebClient gocineClient;
 
-    public MediaDownloadService(GocineService gocineService) {
+    public MediaDownloadService(GocineService gocineService, GocineWebClient gocineClient) {
         this.gocineService = gocineService;
+        this.gocineClient = gocineClient;
     }
 
     /** Descobre a URL do arquivo, já resolvida com token novo. */
@@ -96,7 +99,7 @@ public class MediaDownloadService {
                 .header("User-Agent", USER_AGENT)
                 // O CDN valida o Referer na cadeia de redirect (source -> CDN real);
                 // sem ele o arquivo pode ser recusado.
-                .header("Referer", "https://web.gocine.app/")
+                .header("Referer", gocineClient.base() + "/")
                 .GET();
         if (range != null && !range.isBlank()) {
             request.header(HttpHeaders.RANGE, range);

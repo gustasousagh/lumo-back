@@ -15,7 +15,7 @@ public class LocalImportProperties {
     private boolean enabled = true;
 
     /** Intervalo entre um título (ou uma página da listagem) e o próximo. */
-    private long tickMs = 60_000;
+    private long tickMs = 5_000;
 
     /** Espera depois do arranque antes da primeira rodada. */
     private long initialDelayMs = 60_000;

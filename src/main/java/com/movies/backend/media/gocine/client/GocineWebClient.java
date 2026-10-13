@@ -1,6 +1,7 @@
 package com.movies.backend.media.gocine.client;
 
 import com.movies.backend.media.gocine.config.GocineProperties;
+import com.movies.backend.media.gocine.exception.GocineAuthException;
 import com.movies.backend.media.gocine.exception.GocineNotFoundException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -12,6 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -32,6 +34,15 @@ import tools.jackson.databind.ObjectMapper;
  * A sessão é preguiçosa (loga na primeira necessidade) e se renova sozinha: se
  * uma página responde redirecionando para /login ou /profiles, é sinal de que a
  * sessão caiu — relogamos uma vez e repetimos.
+ *
+ * DOMÍNIO QUE MUDA: o GoCine já trocou de domínio (web.gocine.app passou a
+ * redirecionar para web.gocine.zip). O cookie de sessão é do domínio antigo e
+ * não acompanha o redirect, então a página nova cai no login. Quando uma página
+ * termina em outro host, passamos a usar esse host e relogamos lá.
+ *
+ * SEM MARTELAR O LOGIN: o GoCine bloqueia (429) quem tenta logar demais. Por
+ * isso há no máximo um login por minuto, e um 429 é respeitado pelo tempo do
+ * Retry-After — nesse meio-tempo as chamadas falham na hora, sem rede.
  */
 @Component
 public class GocineWebClient {
@@ -50,6 +61,15 @@ public class GocineWebClient {
     /** Guarda se a sessão já foi estabelecida; o acesso é serializado em ensureSession. */
     private volatile boolean authenticated = false;
     private final Object authLock = new Object();
+
+    /** Host atual do GoCine, quando ele redirecionou para outro diferente do configurado. */
+    private volatile String movedTo;
+
+    private static final Duration MIN_LOGIN_INTERVAL = Duration.ofMinutes(1);
+    private volatile Instant lastLoginAttempt = Instant.EPOCH;
+    private volatile Instant loginBlockedUntil = Instant.EPOCH;
+    /** 429 seguidos: cada um dobra a espera, porque o GoCine reinicia a contagem a cada tentativa. */
+    private volatile int consecutive429 = 0;
 
     public GocineWebClient(GocineProperties props, ObjectMapper om) {
         this.props = props;
@@ -70,9 +90,24 @@ public class GocineWebClient {
 
     /* ------------------------------------------------------------------ sessão */
 
+    /** Base atual do site: a configurada, ou a que o GoCine passou a usar. */
+    public String base() {
+        String m = movedTo;
+        return m != null ? m : props.normalizedWebUrl();
+    }
+
     private void login() {
         props.requireCredentials();
-        String base = props.normalizedWebUrl();
+        Instant now = Instant.now();
+        if (now.isBefore(loginBlockedUntil)) {
+            throw new GocineAuthException(
+                    "GoCine bloqueou o login por excesso de tentativas até " + loginBlockedUntil);
+        }
+        if (now.isBefore(lastLoginAttempt.plus(MIN_LOGIN_INTERVAL))) {
+            throw new GocineAuthException("Login no GoCine feito há menos de 1 min; não tento de novo agora");
+        }
+        lastLoginAttempt = now;
+        String base = base();
 
         // 1) login
         String loginBody;
@@ -85,10 +120,22 @@ public class GocineWebClient {
         } catch (Exception e) {
             throw new IllegalStateException("Falha ao montar o corpo do login", e);
         }
-        JsonNode login = postJson(base + "/api/auth/login", loginBody);
+        HttpResponse<String> loginRes = send(base + "/api/auth/login", loginBody, "application/json");
+        if (loginRes.statusCode() == 429) {
+            long retryAfter = loginRes.headers().firstValueAsLong("Retry-After").orElse(300);
+            consecutive429++;
+            // 10 min, 20, 40, 60... nunca menos do que o próprio GoCine pediu
+            long backoff = Math.min(3600, 600L << Math.min(consecutive429 - 1, 3));
+            long wait = Math.max(retryAfter, backoff);
+            loginBlockedUntil = Instant.now().plusSeconds(wait);
+            log.warn("GoCine bloqueou o login (429); espero {}s", wait);
+            throw new GocineAuthException("GoCine bloqueou o login por " + wait + "s");
+        }
+        consecutive429 = 0;
+        JsonNode login = loginRes.statusCode() >= 400 ? null : parse(loginRes.body());
         if (login == null || !login.path("ok").asBoolean(false)) {
             String msg = login == null ? "sem resposta" : login.path("message").asString("");
-            throw new IllegalStateException("Login no GoCine falhou: " + msg);
+            throw new GocineAuthException("Login no GoCine falhou: " + msg);
         }
 
         // 2) seleciona o perfil (o escolhido, ou o primeiro da conta)
@@ -100,9 +147,9 @@ public class GocineWebClient {
                 postJson(base + "/api/profile/select", "{\"id\":" + profileId + "}");
         if (sel == null || !sel.path("ok").asBoolean(false)) {
             String msg = sel == null ? "sem resposta" : sel.path("message").asString("");
-            throw new IllegalStateException("Seleção de perfil falhou: " + msg);
+            throw new GocineAuthException("Seleção de perfil falhou: " + msg);
         }
-        log.info("Sessão GoCine estabelecida (perfil {}).", profileId);
+        log.info("Sessão GoCine estabelecida em {} (perfil {}).", base, profileId);
     }
 
     /** Primeiro perfil da conta, quando GOCINE_PROFILE_ID não foi definido. */
@@ -153,7 +200,7 @@ public class GocineWebClient {
             ensureSession();
             flight = fetchPage(path);
             if (flight == null) {
-                throw new IllegalStateException("GoCine exigiu login mesmo após relogar: " + path);
+                throw new GocineAuthException("GoCine exigiu login mesmo após relogar: " + path);
             }
         }
         if (useCache) pageCache.put(path, flight);
@@ -162,8 +209,9 @@ public class GocineWebClient {
 
     /** null quando a resposta redirecionou para login/perfil (sessão inválida). */
     private String fetchPage(String path) {
-        String base = props.normalizedWebUrl();
+        String base = base();
         HttpResponse<String> res = send(base + path, null, "text/html");
+        if (followMove(base, res.uri())) return null; // reloga no host novo
         String finalPath = res.uri() == null ? "" : res.uri().getPath();
         if (finalPath.startsWith("/login") || finalPath.startsWith("/profiles")) {
             return null;
@@ -171,16 +219,35 @@ public class GocineWebClient {
         return Rsc.flight(om, res.body());
     }
 
+    /**
+     * Se a resposta terminou em outro host, passa a usá-lo. true quando mudou —
+     * aí a sessão (cookie do host antigo) não vale e é preciso relogar.
+     */
+    private boolean followMove(String base, URI finalUri) {
+        if (finalUri == null || finalUri.getHost() == null) return false;
+        URI current = URI.create(base);
+        if (finalUri.getHost().equalsIgnoreCase(current.getHost())) return false;
+        String next = finalUri.getScheme() + "://" + finalUri.getAuthority();
+        log.warn("GoCine mudou de domínio: {} -> {}. Atualize GOCINE_WEB_URL.", base, next);
+        movedTo = next;
+        lastLoginAttempt = Instant.EPOCH; // o login no host novo pode ser já
+        invalidate();
+        pageCache.invalidateAll();
+        return true;
+    }
+
     /** GET num endpoint BFF (/api/bff/...), com JSON de volta. Reloga em 401. */
     public JsonNode bff(String path) {
         ensureSession();
-        String base = props.normalizedWebUrl();
-        String url = base + "/api/bff/" + path;
-        HttpResponse<String> res = send(url, null, "application/json");
-        if (res.statusCode() == 401) {
+        String base = base();
+        HttpResponse<String> res = send(base + "/api/bff/" + path, null, "application/json");
+        if (followMove(base, res.uri()) || res.statusCode() == 401) {
             invalidate();
             ensureSession();
-            res = send(url, null, "application/json");
+            res = send(base() + "/api/bff/" + path, null, "application/json");
+        }
+        if (res.statusCode() == 401) {
+            throw new GocineAuthException("BFF " + path + " pediu login mesmo após relogar");
         }
         if (res.statusCode() == 404) {
             throw new GocineNotFoundException(res.body());
@@ -208,7 +275,7 @@ public class GocineWebClient {
     /* ------------------------------------------------------------------ baixo nível */
 
     private HttpResponse<String> send(String url, String jsonBody, String accept) {
-        String base = props.normalizedWebUrl();
+        String base = base();
         HttpRequest.Builder b =
                 HttpRequest.newBuilder(URI.create(url))
                         .timeout(Duration.ofSeconds(30))
